@@ -88,14 +88,8 @@ class ScopeOverlays {
 	return end - start;
     }
 
-    void drawRMS(Graphics g) {
-	if (!scope.canShowRMS()) {
-	    // needed for backward compatibility
-	    scope.showRMS = false;
-	    scope.showAverage = true;
-	    drawAverage(g);
-	    return;
-	}
+    double getRMS() {
+	if (scope.visiblePlots.size() == 0) return 0;
 	ScopePlot plot = scope.visiblePlots.firstElement();
 	double mid = (scope.maxValue + scope.minValue) / 2;
 	ScopeDataIterator sdi = new ScopeDataIterator(scope, plot);
@@ -105,10 +99,27 @@ class ScopeOverlays {
 	    () -> { double m = (sdi.getMax() + sdi.getMin()) * .5; avg[0] += m * m; },
 	    () -> endAvg[0] = avg[0]);
 	if (span > 0)
-	    drawInfoText(g, plot.getUnitText(Math.sqrt(endAvg[0] / span)) + "rms");
+	    return Math.sqrt(endAvg[0] / span);
+	return 0;
     }
 
-    void drawAverage(Graphics g) {
+    void drawRMS(Graphics g) {
+	if (!scope.canShowRMS()) {
+	    // needed for backward compatibility
+	    scope.showRMS = false;
+	    scope.showAverage = true;
+	    drawAverage(g);
+	    return;
+	}
+	double rms = getRMS();
+	if (rms != 0 || scope.maxValue - scope.minValue < 1e-8) {
+	    ScopePlot plot = scope.visiblePlots.firstElement();
+	    drawInfoText(g, plot.getUnitText(rms) + "rms");
+	}
+    }
+
+    double getAverage() {
+	if (scope.visiblePlots.size() == 0) return 0;
 	ScopePlot plot = scope.visiblePlots.firstElement();
 	double mid = (scope.maxValue + scope.minValue) / 2;
 	ScopeDataIterator sdi = new ScopeDataIterator(scope, plot);
@@ -118,10 +129,20 @@ class ScopeOverlays {
 	    () -> avg[0] += (sdi.getMax() + sdi.getMin()) * .5,
 	    () -> endAvg[0] = avg[0]);
 	if (span > 0)
-	    drawInfoText(g, plot.getUnitText(endAvg[0] / span) + Locale.LS(" average"));
+	    return endAvg[0] / span;
+	return 0;
     }
 
-    void drawDutyCycle(Graphics g) {
+    void drawAverage(Graphics g) {
+	double avg = getAverage();
+	if (avg != 0 || scope.maxValue - scope.minValue < 1e-8) {
+	    ScopePlot plot = scope.visiblePlots.firstElement();
+	    drawInfoText(g, plot.getUnitText(avg) + Locale.LS(" average"));
+	}
+    }
+
+    double getDutyCycle() {
+	if (scope.visiblePlots.size() == 0) return 0;
 	ScopePlot plot = scope.visiblePlots.firstElement();
 	double mid = (scope.maxValue + scope.minValue) / 2;
 	ScopeDataIterator sdi = new ScopeDataIterator(scope, plot);
@@ -131,15 +152,25 @@ class ScopeOverlays {
 	    () -> { if (sdi.getMax() > mid) dutyLen[0]++; },
 	    () -> prevDuty[0] = dutyLen[0]);
 	if (span > 0)
-	    drawInfoText(g, Locale.LS("Duty cycle ") + 100 * prevDuty[0] / span + "%");
+	    return 100.0 * prevDuty[0] / span;
+	return 0;
     }
 
-    void drawFrequency(Graphics g) {
+    void drawDutyCycle(Graphics g) {
+	double dc = getDutyCycle();
+	if (dc != 0) {
+	    drawInfoText(g, Locale.LS("Duty cycle ") + Math.round(dc) + "%");
+	}
+    }
+
+    double getFrequency() {
+	if (scope.visiblePlots.size() == 0) return 0;
 	double avg = 0;
 	ScopePlot plot = scope.visiblePlots.firstElement();
 	ScopeDataIterator sdi = new ScopeDataIterator(scope, plot);
 	for (int i : sdi)
 	    avg += sdi.getMin() + sdi.getMax();
+	if (sdi.validCount == 0) return 0;
 	avg /= sdi.validCount * 2;
 	int state = 0;
 	double thresh = avg * .05;
@@ -166,12 +197,18 @@ class ScopeOverlays {
 		periodct++;
 	    }
 	}
+	if (periodct <= 0) return 0;
 	avperiod /= periodct;
 	avperiod2 /= periodct;
 	double periodstd = Math.sqrt(avperiod2 - avperiod * avperiod);
 	double freq = 1 / (avperiod * scope.sim.maxTimeStep * scope.speed);
 	if (periodct < 1 || periodstd > 2)
 	    freq = 0;
+	return freq;
+    }
+
+    void drawFrequency(Graphics g) {
+	double freq = getFrequency();
 	if (freq != 0)
 	    drawInfoText(g, CircuitElm.getUnitText(freq, "Hz"));
     }

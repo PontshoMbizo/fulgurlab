@@ -2,6 +2,7 @@ package com.lushprojects.circuitjs1.client;
 
 import com.google.gwt.core.client.JavaScriptObject;
 import com.google.gwt.core.client.JsArray;
+import com.google.gwt.core.client.JsArrayNumber;
 
 public class JSInterface {
 
@@ -30,6 +31,9 @@ public class JSInterface {
     native void jsPut(JavaScriptObject o, String k, double v) /*-{ o[k] = v; }-*/;
     native void jsPutStr(JavaScriptObject o, String k, String v) /*-{ o[k] = v; }-*/;
     native void jsPutBool(JavaScriptObject o, String k, boolean v) /*-{ o[k] = v; }-*/;
+    native void jsPutArray(JavaScriptObject o, String k, JsArrayNumber v) /*-{ o[k] = v; }-*/;
+    native void jsPutObject(JavaScriptObject o, String k, JavaScriptObject v) /*-{ o[k] = v; }-*/;
+    native JsArrayNumber getJSArrayNumber() /*-{ return []; }-*/;
 
     JsArray<JavaScriptObject> getJSElements() {
 	int i;
@@ -254,6 +258,64 @@ public class JSInterface {
         return o;
     }
 
+    int getScopeCount() {
+        if (app.scopeManager == null) return 0;
+        return app.scopeManager.scopeCount;
+    }
+
+    JavaScriptObject getScopeData(int index) {
+        if (app.scopeManager == null) return null;
+        if (index < 0 || index >= app.scopeManager.scopeCount) return null;
+        Scope s = app.scopeManager.scopes[index];
+        JavaScriptObject o = newJSObject();
+        jsPutStr(o, "text", s.getText() != null ? s.getText() : "");
+        jsPut(o, "speed", s.speed);
+        
+        if (s.visiblePlots.size() > 0) {
+            ScopePlot plot = s.visiblePlots.firstElement();
+            s.calcMaxAndMin(plot.units);
+            jsPut(o, "maxValue", s.maxValue);
+            jsPut(o, "minValue", s.minValue);
+            jsPut(o, "p2p", s.maxValue - s.minValue);
+            jsPut(o, "rms", s.overlays.getRMS());
+            jsPut(o, "average", s.overlays.getAverage());
+            jsPut(o, "dutyCycle", s.overlays.getDutyCycle());
+            jsPut(o, "frequency", s.overlays.getFrequency());
+        }
+        return o;
+    }
+
+    JavaScriptObject getScopeAdvancedPlot(int index) {
+        if (app.scopeManager == null) return null;
+        if (index < 0 || index >= app.scopeManager.scopeCount) return null;
+        Scope s = app.scopeManager.scopes[index];
+        JavaScriptObject o = newJSObject();
+        
+        if (s.fftPlot != null && s.fftPlot.enabled && s.fftPlot.fftReal != null) {
+            JavaScriptObject fft = newJSObject();
+            JsArrayNumber realArr = getJSArrayNumber();
+            JsArrayNumber imagArr = getJSArrayNumber();
+            for (int i = 0; i < s.scopePointCount / 2; i++) {
+                realArr.push(s.fftPlot.fftReal[i]);
+                imagArr.push(s.fftPlot.fftImag[i]);
+            }
+            jsPutArray(fft, "real", realArr);
+            jsPutArray(fft, "imag", imagArr);
+            jsPut(fft, "maxMagnitude", s.fftPlot.fftMaxMagnitude);
+            jsPutObject(o, "fft", fft);
+        }
+
+        if (s.plot2d != null && s.plot2d.enabled) {
+            JavaScriptObject xy = newJSObject();
+            jsPut(xy, "plotX", s.plot2d.plotX);
+            jsPut(xy, "plotY", s.plot2d.plotY);
+            jsPutBool(xy, "plotXY", s.plot2d.plotXY);
+            jsPutObject(o, "plot2d", xy);
+        }
+
+        return o;
+    }
+
     native void setupJSInterface() /*-{
 	var that = this;
 	$wnd.CircuitJS1 = {
@@ -289,7 +351,10 @@ public class JSInterface {
 	    getResonantFrequency: $entry(function() { return that.@com.lushprojects.circuitjs1.client.JSInterface::getResonantFrequency()(); } ),
 	    getLabeledNodeVoltages: $entry(function() { return that.@com.lushprojects.circuitjs1.client.JSInterface::getLabeledNodeVoltages()(); } ),
 	    validateCircuit: $entry(function() { return that.@com.lushprojects.circuitjs1.client.JSInterface::validateCircuit()(); } ),
-	    getState: $entry(function() { return that.@com.lushprojects.circuitjs1.client.JSInterface::getState()(); } )
+	    getState: $entry(function() { return that.@com.lushprojects.circuitjs1.client.JSInterface::getState()(); } ),
+	    getScopeCount: $entry(function() { return that.@com.lushprojects.circuitjs1.client.JSInterface::getScopeCount()(); } ),
+	    getScopeData: $entry(function(i) { return that.@com.lushprojects.circuitjs1.client.JSInterface::getScopeData(I)(i); } ),
+	    getScopeAdvancedPlot: $entry(function(i) { return that.@com.lushprojects.circuitjs1.client.JSInterface::getScopeAdvancedPlot(I)(i); } )
 	};
 	var hook = $wnd.oncircuitjsloaded;
 	if (hook)
