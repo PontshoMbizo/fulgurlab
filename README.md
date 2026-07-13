@@ -1,10 +1,28 @@
-# CircuitJS1
+# fulgurlab
 
 <p align="center">
-  <img src="war/icon128.png" alt="CircuitJS1 logo" width="128" height="128">
+  <img src="war/icon128.png" alt="fulgurlab logo" width="128" height="128">
   <br>
-  <em>Electronic Circuit Simulator in the Browser</em>
+  <em>Unified electronics lab in the browser</em>
 </p>
+
+**fulgurlab** = the CircuitJS1 analog/digital circuit engine (below) as the base, plus
+two co-simulated extensions wired in over a lockstep WebSocket bridge
+([docs/bridge-protocol.md](docs/bridge-protocol.md)):
+
+- **[fpgasim](https://github.com/PontshoMbizo/fpgasim)** — Tang Nano 9K FPGA: Verilog
+  compiled and stepped by iverilog/vvp in a hardened sandbox (bridge on `:3100`)
+- **[mcusim](https://github.com/PontshoMbizo/mcusim)** — STM32F103 Blue Pill: bare-metal
+  C under QEMU with semihosting-driven quantum exchange (bridge on `:3101`)
+
+Place an **External Chip** (Draw → Digital Chips → External Chip (fulgurlab)) on the
+canvas, give it a bridge URL, pin spec and source; its pins become live circuit nodes
+advanced in lockstep with the external simulator. `npm test` runs the bridge-client
+unit tests; `npm run test:integration` drives the real backends from sibling checkouts.
+
+---
+
+# CircuitJS1 (engine)
 
 ## Introduction
 
