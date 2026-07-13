@@ -45,10 +45,15 @@
     return { pins };
   }
 
+  // Bit packing is per-direction (LSB = first "in"/"out" pin respectively), so only
+  // the order WITHIN each direction group is contractual — mcusim reports pins in
+  // LOCKSTEP_PINS declaration order, which may interleave directions differently.
   function pinsMatch(declared, created) {
-    if (declared.length !== created.length) return false;
-    for (let i = 0; i < declared.length; i++)
-      if (declared[i].name !== created[i].name || declared[i].dir !== created[i].dir) return false;
+    for (const dir of ["in", "out"]) {
+      const d = declared.filter((p) => p.dir === dir).map((p) => p.name);
+      const c = created.filter((p) => p.dir === dir).map((p) => p.name);
+      if (d.length !== c.length || d.some((n, i) => n !== c[i])) return false;
+    }
     return true;
   }
 
