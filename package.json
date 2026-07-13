@@ -1,0 +1,10 @@
+{
+  "name": "fulgurlab",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Unified electronics lab: circuitjs1 engine + fpgasim/mcusim lockstep co-simulation (see docs/bridge-protocol.md)",
+  "scripts": {
+    "test": "node --test jstests/*.test.mjs",
+    "test:integration": "node --test integration-tests/*.test.mjs"
+  }
+}
