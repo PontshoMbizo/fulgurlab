@@ -4,8 +4,8 @@ This document contains rules, operational guidelines, and context for AI agents 
 
 ## 1. Project Architecture
 The workspace consists of two tightly-coupled projects:
-* **CircuitJS1** (`/home/pontsho/Workspace/projects/circuitjs1`): The core circuit simulation engine written in Java and compiled to Javascript via GWT.
-* **Scope.io** (`/home/pontsho/Workspace/projects/ohmify`): A Next.js 16 (Turbopack) web application that wraps the CircuitJS engine within an `iframe` (specifically in `components/Simulator.jsx`) to provide an interactive educational platform.
+* **CircuitJS1** (`/home/pontsho/Workspace/projects/fulgurlab`): The core circuit simulation engine written in Java and compiled to Javascript via GWT.
+* **Scope.io** (`/home/pontsho/Workspace/projects/scope.io`): A Next.js 16 (Turbopack) web application that wraps the CircuitJS engine within an `iframe` (specifically in `components/Simulator.jsx`) to provide an interactive educational platform.
 
 ## 2. Making Changes to CircuitJS1 (The Engine)
 When you modify Java files or core HTML/CSS in `circuitjs1`, you no longer need to manually compile and copy them.
