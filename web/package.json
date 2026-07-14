@@ -1,0 +1,9 @@
+{
+  "name": "fulgurlab-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "engine",
+    "app"
+  ]
+}
