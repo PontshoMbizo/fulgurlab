@@ -1,0 +1,704 @@
+# fulgurlab React rewrite — execution plan
+
+**For the executing agent (Claude Sonnet 5).** This document is the single source of
+truth for rebuilding fulgurlab as ONE tool: a React/TypeScript circuit simulator where
+Falstad's component library and the co-simulated FPGA/MCU chips live in the same
+palette, on the same canvas, with no GWT and no iframes.
+
+Decided with Pontsho 2026-07-13: **TypeScript engine**, **core ~40 elements before
+switchover** (Tier 1, §A.1), old GWT build retained as the *test oracle* until parity
+sign-off.
+
+---
+
+## 1. Context — what exists and what is frozen
+
+| Asset | Where | Status |
+|---|---|---|
+| GWT circuit engine (Java) | `src/com/lushprojects/circuitjs1/client/` | **Oracle.** Never broken/deleted until Phase 8 sign-off. Solver: `SimulationManager.java` (analyzeCircuit :788, stampCircuit :932, stamp API :1128+, runCircuit :1253, lu_factor :1655, lu_solve :1750). 151 `*Elm.java` element classes. Text format I/O: `CircuitLoader.java`, per-element `dump()`/`StringTokenizer` ctors. |
+| Prebuilt GWT site | `site/` | Runs with `python3 -m http.server` — no GWT compile needed to use the oracle. |
+| Lockstep bridge protocol v1 | `docs/bridge-protocol.md` | **Frozen.** Additive changes only. |
+| fpgasim backend (`:3100`) | `../fpgasim` (bridge/server.mjs, lockstepHarness/Session/Codec) | Working, 198 tests + real-vvp e2e green. Do not modify except additively. |
+| mcusim backend (`:3101`) | `../mcusim` (bridge/server.mjs, lockstepGlue, semihosting lockstep) | Working, 81 tests + real-QEMU e2e green. Hard-won QEMU gotchas documented in the vault ADR `10 - Projects/fulgurlab/decisions/2026-07-13 lockstep bridge architecture.md` — read it before touching anything QEMU-adjacent. |
+| Browser bridge client | `war/fulgur-bridge.js` + `jstests/` (incl. dependency-free `miniws.mjs` ws server) | Port to TS in Phase 4; transliterate its 6 unit tests. |
+| Cross-repo integration tests | `integration-tests/bridge.integration.test.mjs` | Pattern to copy for the new engine's ExtChip integration tests. |
+| Test circuits corpus | `tests/*.txt` (30 files), `auto-tests/*.txt` (7 files) | Seed corpus for golden fixtures and import-compat tests. |
+| Java ExtChipElm | `client/ExtChipElm.java` (dump type 460) | Reference semantics for the TS ExtChip; retired with the GWT build. |
+
+**Non-goals (v1):** full 151-element parity (Tier 2/3 come after switchover); circuit
+sharing links/LZ compression; localization; mobile UI; multi-user sessions; changing
+the sandbox/backends.
+
+---
+
+## 2. Ground rules — how to work (read at the start of EVERY session)
+
+1. Follow the workspace core loop (`~/Workspace/CLAUDE.md`): orient → explore before
+   editing → smallest correct change → verify → commit small → capture decisions in
+   the vault (`second brain/10 - Projects/fulgurlab/`).
+2. **The oracle wins.** When the TS engine and the GWT engine disagree on a waveform,
+   the GWT engine is right unless you can prove a Java bug (document any such
+   exception in `docs/oracle-divergences.md` with circuit + explanation).
+3. **One phase per session** (roughly). Re-read §2 and your phase section at session
+   start. At session end: all gates green, commits pushed, tick the checklist in §12,
+   note surprises in the vault.
+4. Port faithfully first, refactor later. Keep Java names in the TS port
+   (`stampResistor`, `doStep`, `startIteration`) — mechanical correspondence is what
+   makes the port reviewable and debuggable against the Java.
+5. Never `npm install` a dependency not listed in §3.4 without recording a decision
+   note in the vault.
+6. Determinism is sacred in tests: fixed timestep, fixed seeds, no wall-clock time in
+   the engine (inject a clock where needed — the bridge client pacing is the only
+   consumer).
+7. Each element port lands as its own commit: `model + params + registry + fixture +
+   golden test + draw`.
+
+---
+
+## 3. Target architecture
+
+### 3.1 One repo, one tool
+
+Everything lives in this repo (`fulgurlab`) under a new `web/` npm workspace. The
+gradle/GWT tree stays untouched at the root until retirement.
+
+```
+fulgurlab/
+├── src/…                      # GWT Java (oracle — untouched)
+├── site/                      # prebuilt oracle site (untouched)
+├── docs/
+│   ├── bridge-protocol.md     # frozen protocol
+│   ├── react-rewrite-plan.md  # this file
+│   └── oracle-divergences.md  # created in Phase 1
+├── tools/
+│   └── golden-recorder/       # Phase 0: records oracle traces via puppeteer
+├── web/                       # NEW — npm workspaces root
+│   ├── package.json           # workspaces: ["engine", "app"]
+│   ├── engine/                # @fulgurlab/engine — pure TS, zero DOM imports
+│   │   ├── src/
+│   │   │   ├── core/          # matrix, nodes, solver, sim loop
+│   │   │   ├── elements/      # one folder per element
+│   │   │   ├── io/            # Falstad text format parse/serialize
+│   │   │   ├── bridge/        # lockstep bridge client (protocol v1)
+│   │   │   └── index.ts
+│   │   ├── test/              # vitest; golden/ fixtures JSON
+│   │   └── package.json
+│   └── app/                   # @fulgurlab/app — Next.js 16 + React 19 + Tailwind
+│       ├── src/
+│       │   ├── canvas/        # renderer + interaction state machine
+│       │   ├── palette/       # component library UI
+│       │   ├── dialogs/       # schema-driven edit dialogs
+│       │   ├── scopes/        # waveform pane
+│       │   ├── extchip/       # Monaco drawers, board presets, status UI
+│       │   └── app/           # Next app router pages
+│       └── package.json
+```
+
+### 3.2 Engine/UI seam
+
+- `@fulgurlab/engine` exports a `CircuitEngine` class: imperative, headless, runs in
+  node (all solver/element tests run without a browser) and in the browser.
+- The React app owns a single engine instance outside React state. React subscribes
+  via `useSyncExternalStore(engine.subscribe, engine.getSnapshotVersion)` — the engine
+  bumps a version counter per completed frame; canvas drawing reads engine state
+  directly in a `requestAnimationFrame` loop (no per-element React nodes — Canvas 2D,
+  like Falstad).
+- Element **draw code is separate from model code** (`elements/resistor/model.ts` vs
+  `draw.ts`) so the engine package never imports DOM types. Draw modules register
+  into a renderer-side registry keyed by the same element ids.
+
+### 3.3 The FPGA/MCU seam (unchanged)
+
+The bridge protocol v1 and both backend servers are reused as-is. The TS
+`BridgeClient` (port of `war/fulgur-bridge.js`) is the only new bridge code. The
+ExtChip element is a normal engine element whose `execute()` exchanges pin bits with
+the client — identical semantics to the Java `ExtChipElm` (bounded-skew pacing, pause
+via engine stop, per-direction pin-order contract).
+
+### 3.4 Dependencies (complete list — anything else needs a vault decision note)
+
+- `web/engine`: **zero runtime deps.** Dev: `typescript`, `vitest`.
+- `web/app`: `next@16`, `react@19`, `react-dom@19`, `tailwindcss@4`,
+  `@monaco-editor/react` (same as fpgasim), `@fulgurlab/engine`. Dev: `typescript`,
+  `eslint`, `eslint-config-next`, `vitest`, `@vitejs/plugin-react` (component tests).
+- `tools/golden-recorder`: `puppeteer` (already a dep in ../fpgasim; hoist a private
+  package.json here).
+- Node ≥ 22 everywhere (global WebSocket, matches the sibling repos' CI matrix).
+
+---
+
+## 4. Phase plan (the executable spine)
+
+Each phase lists: goal, tasks, and a **gate** (measurable exit criteria). Do not start
+phase N+1 with a red gate. Estimated total: 15–20 focused agent sessions.
+
+### Phase 0 — Scaffolding + oracle harness (1–2 sessions)
+
+Goal: `web/` workspace builds; golden traces can be recorded from the GWT build.
+
+Tasks:
+1. Create `web/` workspaces (`engine`, `app` — app is a bare Next 16 create for now),
+   TS strict configs, vitest wiring, `npm run -w engine test` green with a placeholder
+   test. ESLint rule (`no-restricted-imports` of `react`/DOM libs) enforcing engine
+   purity.
+2. **Oracle stepping API** (the one permitted GWT change): add to
+   `JSInterface.java` + `setupJSInterface()`:
+   - `stepSim(n)` — with the sim stopped, run exactly n iterations of the
+     `runCircuit` path at fixed `timeStep` (locate the per-frame call into
+     `SimulationManager.runCircuit(...)` and factor a loop that advances exactly one
+     `timeStep` per call, adaptive subdivision disabled via `maxTimeStep == timeStep`).
+   - `getNodeVoltageList()` — array of all node voltages, index order = node order.
+   - `getElementCurrent(i)` / reuse existing `getJSElements()` handles.
+   Verify by pushing (CI compiles GWT) or by local `./gradlew compileGwt` where
+   possible; the sandbox may not reach maven — CI is the compile gate then.
+3. `tools/golden-recorder/record.mjs`: serve `site/` on localhost, puppeteer:
+   `importCircuit(text)` → `setSimRunning(false)` → loop `stepSim(1)` +
+   sample probes → write `web/engine/test/golden/<name>.json`:
+   ```json
+   { "name": "rc-lowpass", "circuit": "<falstad text>", "dt": 5e-6, "steps": 2000,
+     "probes": { "nodes": [1,2], "elements": [0] },
+     "traces": { "node:1": [ ... ], "elm:0:current": [ ... ] } }
+   ```
+4. Record fixtures for the Phase 1 element set from hand-written minimal circuits
+   (see §A.3 fixture list) plus 5 corpus circuits from `tests/` that use only Tier-1
+   elements (`lrc.txt`, `fullrect.txt`, `capac.txt` candidates — inspect first).
+
+Gate: `node tools/golden-recorder/record.mjs --all` produces ≥ 15 fixture JSONs,
+deterministic across two runs (byte-identical traces); workspace `npm test` green.
+
+### Phase 1 — Engine core + linear elements (2–3 sessions)
+
+Goal: the MNA solver runs Falstad-text circuits of linear Tier-1 elements and matches
+the oracle.
+
+Tasks (port order matters):
+1. `core/lu.ts` — port `lu_factor_dense` / `lu_solve` from `SimulationManager.java`
+   :1669/:1750 exactly (partial pivoting, singular detection). Property tests: random
+   diagonally-dominant systems vs a naive Gaussian solver; singular matrix detection.
+   (Skip the `CircuitMatrix` sparse wrapper — dense first; perf work is Phase 8+.)
+2. `core/node.ts` — `CircuitNode`, `CircuitNodeLink` (port `CircuitNode.java`),
+   node allocation, wire closure (`calculateWireClosure`), ground handling,
+   post→node mapping. Port `analyzeCircuit()` (:788) including internal nodes,
+   unconnected-node detection and the singular-matrix diagnostics.
+3. `core/engine.ts` — `stampCircuit()` (:932) with row simplification
+   (`ROW_NORMAL`/`ROW_CONST` machinery — port it, it's what keeps matrices small),
+   full stamp API surface used by Tier-1 elements: `stampResistor`, `stampConductance`,
+   `stampVoltageSource` (3 overloads), `stampCurrentSource`, `stampRightSide`,
+   `stampMatrix`, `stampNonLinear`, `updateVoltageSource`. Then `runCircuit()`
+   (:1253): nonlinear iteration loop, convergence flag, iteration cap, timestep state
+   (`timeStep`, `maxTimeStep`, `timeStepAccum` — :50–:60), and a **deterministic mode**
+   (`engine.stepOnce()` = exactly one `timeStep`, adaptive off) mirroring the oracle's
+   `stepSim`.
+4. `core/element.ts` — `CircuitElm` base: posts, nodes, voltages, `setNodeVoltage`,
+   `getVoltageDiff`, `calculateCurrent`, geometry as pure data (x,y,x2,y2,flags,
+   points computed via `setPoints()` — port the math; rendering consumes it later).
+   `params` schema replaces `EditInfo` (§8.2).
+5. `io/falstadText.ts` — parse/serialize: `$` options line (dt, iterCount, voltage
+   range…), element lines (`<dumpId> x y x2 y2 flags <element tokens…>`), the escape
+   scheme from `CustomLogicModel.escape/unescape`, `w`/`r`/`g`… short codes and
+   numeric dump ids via `registry.ts`. Unknown elements: **preserve verbatim** and
+   warn (forward-compat with Tier-2/3 circuits; round-trip must not lose them).
+6. Elements (each per §8 playbook): Wire, Ground, Resistor, DCVoltage/ACVoltage
+   (VoltageElm variants), Rail/Clock (RailElm waveforms), Switch, Switch2 (SPDT),
+   Capacitor, Inductor (companion models — port `startIteration`/`doStep` exactly),
+   Current source, Probe/Output, LabeledNode, Text, Box, Ammeter, Potentiometer.
+
+Gate: golden tests green for all linear fixtures at tolerance `rtol 1e-6, atol 1e-9`
+(pointwise, every step); `tests/lrc.txt` (and other Tier-1-only corpus circuits)
+round-trip byte-stable through parse→serialize (modulo whitespace); engine has zero
+DOM imports (lint gate); vitest suite < 30 s.
+
+### Phase 2 — Nonlinear devices (2 sessions)
+
+Goal: diodes and transistors converge like the oracle.
+
+Tasks: port `DiodeElm` (+ the shared `Diode.java` model file: exp limiting /
+`limitStep`), `ZenerElm`, `LEDElm`, `TransistorElm` (Ebers-Moll with the same
+`limitStep` damping), `MosfetElm`, `OpAmpElm` (ideal, with the saturation clamp);
+convergence machinery: `converged` flag, subiteration limit, the
+non-convergence → halve-timestep behavior (verify against oracle by recording a
+deliberately hard fixture, e.g. full-wave rectifier at large dt); `getInfo`-equivalent
+metadata for the UI later.
+
+Gate: nonlinear fixtures (diode clipper, bridge rectifier `fullrect.txt`, BJT
+common-emitter amp, MOSFET inverter, op-amp follower + integrator) match oracle at
+`rtol 1e-3` pointwise; no fixture needs > oracle's iteration count ×2 to converge.
+
+### Phase 3 — Digital elements + chip pattern (1–2 sessions)
+
+Goal: the ChipElm pattern and Tier-1 logic work; analog/digital boundary matches.
+
+Tasks: port `ChipElm` base (pins, `sizeX/sizeY`, `SIDE_*`, threshold `highVoltage/2`,
+voltage-source-per-output stamping, `execute()` hook — this is the base ExtChip needs);
+`GateElm` family (AND/OR/XOR/NAND/NOR/Inverter, incl. input count param + the
+`highVoltage` flag semantics), `LogicInputElm`, `LogicOutputElm`, `DFlipFlopElm`,
+`JKFlipFlopElm`, `SevenSegElm`, `CustomLogicElm` + `CustomLogicModel` (rule-table
+format port — needed by scope.io problem sets).
+
+Gate: digital golden fixtures (gate truth-table sweep driven by LogicInputs, DFF
+divider, 7-seg counter from corpus `tflipflop.txt`, custom-logic `custom.txt`) match
+oracle (`rtol 1e-6` — digital nodes are effectively exact); ChipElm base has unit
+tests for pin allocation/threshold/drive identical to Java behavior.
+
+### Phase 4 — Bridge client + ExtChip element (1 session)
+
+Goal: FPGA/MCU chips work in the TS engine, verified against the real backends.
+
+Tasks:
+1. `bridge/client.ts` — port `war/fulgur-bridge.js` 1:1 (configure/setInputs/
+   getOutputs/onSimTime/status/events/dispose; per-direction `pinsMatch`; pause via
+   an injected `SimControl` interface implemented by `CircuitEngine`). Transliterate
+   `jstests/fulgur-bridge.test.mjs` + `miniws.mjs` into vitest.
+2. `elements/extchip/` — port `ExtChipElm.java` semantics onto the TS ChipElm base
+   (dump type 460, same dump token order → old circuits with ExtChips load). Plus one
+   improvement the Java couldn't do cleanly: `adoptPins(created.pins)` — after
+   `created`, if the declared spec was empty, adopt the backend's pin list and
+   re-layout (dump still serializes the canonical spec afterwards).
+3. `integration-tests/` (engine-level): copy the pattern from
+   `integration-tests/bridge.integration.test.mjs` — spawn real fpgasim/mcusim bridge
+   servers from sibling checkouts with host-mode entrypoints, drive
+   `engine.stepOnce()` in a loop, assert a Verilog divider and the PC13-mirror
+   firmware drive/read engine node voltages through actual R/LED elements. Skip
+   gracefully when toolchains/siblings are missing (same `have()` guards).
+
+Gate: bridge client vitest suite green (hermetic); engine integration tests green
+with real iverilog + QEMU locally; `quantum pacing` unit test proves the engine
+pauses/resumes at one-quantum skew.
+
+### Phase 5 — React app: canvas editor (3–4 sessions)
+
+Goal: usable editor — place, wire, edit, run, save/load — for everything Tier 1.
+
+Tasks:
+1. Canvas renderer: DPR-aware single `<canvas>`, pan/zoom (wheel+drag, pinch later),
+   grid snap (`gridSize` 16), the draw-helper API (port `CircuitElm.draw*` helpers:
+   `drawThickLine`, `drawPosts`, dot current animation, voltage color scale — port
+   `setVoltageColor` gradient exactly; current dots use `curcount` port).
+   Draw modules for every Tier-1 element (mechanical port of each `draw()`).
+2. Interaction state machine (explicit union type, no boolean soup): `select`,
+   `drag-elm`, `drag-post`, `drag-new-element`, `marquee`, `pan`, `wire-split`.
+   Port behaviors from `MouseHandler`/`UIManager.java` (hit-testing via element
+   `getPost`/bounding boxes, shift-constraints, double-click opens edit dialog).
+3. Undo/redo: snapshot the dump string on every mutation commit (exactly the Java
+   `undoStack` approach — cheap and format-exercising).
+4. Palette: categories mirroring `Menus.java` tree (extract the `makeClassCheckItems`
+   arrays: Basic / Passive / Inputs & Sources / Outputs & Labels / Active /
+   Active Building Blocks / Logic Gates / Digital Chips / Analog & Hybrid, plus a new
+   top-level **“Co-simulated chips”** with Tang Nano 9K and STM32 Blue Pill cards).
+   Search box over names + keyboard shortcut parity (extract shortcut chars from
+   Menus.java before building).
+5. Edit dialogs: schema-driven form from element `params` (number w/ unit + slider
+   where `allowSliders`, text, select, checkbox, textarea) — one generic
+   `<ElementDialog>`, zero per-element dialog components (ExtChip drawer in Phase 6
+   is the exception).
+6. File: open/save `.txt` (Falstad format), import from clipboard, export selection
+   as subcircuit text; localStorage autosave; `examples/` menu loading the repo
+   corpus.
+7. Simulation chrome: run/stop, speed slider (`iterCount`-equivalent), timestep
+   control, reset; status line (converged/singular warnings surfaced like the Java
+   `stop()` messages).
+
+Gate: scripted Playwright (or puppeteer, reuse recorder infra) smoke: load
+`lrc.txt` from corpus → runs, waveform visibly oscillates (assert via engine node
+samples, not pixels); place-wire-edit-undo flow test; all Tier-1 elements placeable
+from palette and render without exceptions; `next build` clean; Lighthouse perf not
+required but 500-element corpus circuit sustains 30 fps on dev hardware (manual
+check, note the number).
+
+### Phase 6 — Scopes + ExtChip UX (1–2 sessions)
+
+Goal: the “one tool” payoff — waveforms and code drawers in the same window.
+
+Tasks:
+1. Scope pane: port the essential 20% of `Scope.java` — per-scope ring buffer of
+   min/max per pixel column, speed (sim-steps/px), stack of scopes docked bottom,
+   add-to-scope from element context menu, voltage+current traces, auto-scale,
+   manual scale, RMS/avg/freq readouts (port the calc methods — `simulator.md`
+   documents the semantics his fork already exposes via JS API).
+2. ExtChip drawer: right-side panel when an ExtChip is selected — Monaco editor
+   (verilog / c language modes), board preset dropdown (Tang Nano 9K → fpgasim URL +
+   sample blinky Verilog; Blue Pill → mcusim URL + PC13 blinky C with
+   `LOCKSTEP_PINS`), engine selector (mainline/xpack) for MCU, quantum control,
+   status chip (unconfigured/connecting/compiling/running/ended/error with log
+   viewer), Apply = `configure()` round-trip, “Adopt pins from build”.
+3. ExtChip event lanes: the bridge `events` stream (`[t_ns, PIN, v]`) renders as
+   digital lanes in the scope pane (this is data the GWT tool always dropped —
+   intra-quantum edges from vvp/QEMU visible next to analog traces).
+4. Wire the app to bridges via `NEXT_PUBLIC_FPGASIM_BRIDGE` / `NEXT_PUBLIC_MCUSIM_BRIDGE`
+   (defaults `ws://localhost:3100|3101`).
+
+Gate: manual e2e with real backends: blinky Verilog ExtChip → LED+resistor circuit
+blinks on canvas; PC13 firmware drives an LED; a circuit voltage divider feeding
+PA0 flips firmware behavior (bidirectional proof — mirror the integration-test
+circuits interactively); scope shows analog trace + digital event lane together;
+all recorded as a short demo circuit committed to `examples/fulgurlab/`.
+
+### Phase 7 — Import compatibility + Tier-1 hardening (1–2 sessions)
+
+Tasks: corpus sweep — every file in `tests/` and `auto-tests/` must parse without
+crashing (Tier-2/3 elements → placeholder “unsupported element” box that preserves
+tokens on re-save); triage the ~10 most-used Tier-2 elements in his scope.io problem
+set (ask Pontsho for the export, or grep scope.io fixtures) and pull them forward if
+cheap; error UX (singular matrix, unconnected nodes) matches Java messages; a11y+
+keyboard pass on dialogs/palette.
+
+Gate: 100% of corpus parses & round-trips losslessly; scope.io priority elements
+list agreed with Pontsho and either ported or scheduled; zero console errors across
+the examples gallery.
+
+### Phase 8 — Parity sign-off, embed API, deploy, retirement (1–2 sessions)
+
+Tasks:
+1. `window.CircuitJS1`-compatible shim on the app (importCircuit, setSimRunning,
+   getTime, getNodeVoltage, the scope getters from `simulator.md`) so **scope.io
+   swaps an iframe URL and nothing else**; verify against
+   `scope.io/components/Simulator.jsx` usage (`?startCircuit=…&hideMenu=true` query
+   params honored).
+2. Deploy: static-export the app (or compose service like the siblings — decide with
+   Pontsho based on VPS setup) + envs for bridge URLs; extend `.github/workflows/`
+   with `web` job (typecheck, vitest, build, engine-purity lint). Keep the GWT build
+   job until this phase signs off.
+3. Retirement decision with Pontsho: archive the GWT tree (`git tag gwt-final`),
+   update `README.md`, workspace `CLAUDE.md`, vault dashboard; oracle recorder and
+   fixtures stay (they now guard the TS engine against regressions).
+
+Gate: Pontsho approves side-by-side; scope.io staging works against the new embed;
+CI green including golden + integration suites.
+
+---
+
+## 5. Engine port spec (detail for Phases 1–3)
+
+### 5.1 Source-of-truth map (Java → TS)
+
+| Java (client/) | TS (web/engine/src/) | Notes |
+|---|---|---|
+| `SimulationManager.java` :1655–:1810 | `core/lu.ts` | Port `lu_factor_dense` + `lu_solve`. Ignore `CircuitMatrix` sparse path for now (add a `// PERF: CircuitMatrix port` marker). |
+| `SimulationManager.java` :788 `analyzeCircuit` | `core/analyze.ts` | Wire closure, node map, internal nodes, voltage-source numbering, connectivity validation. |
+| `SimulationManager.java` :932 `stampCircuit` + row-simplification | `core/engine.ts` | Keep `RowInfo` port including `ROW_CONST` elimination — it is required for matching oracle matrices. |
+| `SimulationManager.java` :1253 `runCircuit` | `core/engine.ts#stepFrame/stepOnce` | Deterministic `stepOnce()` used by golden tests; frame loop used by the app. |
+| `CircuitElm.java` | `core/element.ts` | Geometry, posts, node voltage plumbing, current, dump plumbing. |
+| `CircuitNode.java` | `core/node.ts` | 1:1. |
+| `CircuitLoader.java` + per-elm `dump()` | `io/falstadText.ts` + per-element `serialize/parse` | `$` options line first; keep the exact token order per element. |
+| `ChipElm.java` | `elements/_chip/chipBase.ts` | Base for gates-with-pins, FF, ExtChip. |
+| Individual `XxxElm.java` | `elements/xxx/model.ts` | See §8 playbook. |
+| `war/fulgur-bridge.js` | `bridge/client.ts` | 1:1 port; `_simCtl` becomes constructor-injected `SimControl`. |
+| `Menus.java` shortcut/category arrays | `app/src/palette/catalog.ts` | Extracted data, not logic. |
+| `Scope.java` (subset) | `app/src/scopes/` | Ring buffers + readouts only in v1. |
+
+### 5.2 Type conventions
+
+- Matrix: `number[][]` rows (dense), `Int32Array` for `ipvt`; right side `Float64Array`.
+- Java `int` flags → `number` + `const` flag objects (`FLAGS = { CUSTOM_VOLTAGE: 1 << 13 }`).
+- `StringTokenizer` → `Tokenizer` util (whitespace split, `nextInt()/nextDouble()/next()`,
+  plus `escape/unescape` ported byte-for-byte from `CustomLogicModel.java` :257).
+- `EditInfo` → `ParamSpec`:
+  ```ts
+  type ParamSpec =
+    | { kind: "number"; key: string; label: string; unit?: string;
+        min?: number; max?: number; allowSlider?: boolean }
+    | { kind: "select"; key: string; label: string; options: string[] }
+    | { kind: "checkbox" | "text" | "textarea"; key: string; label: string };
+  ```
+- No exceptions for control flow in the solver; convergence/singularity are returned
+  statuses surfaced as engine events (`engine.on("stopped", reason)`).
+
+### 5.3 Element base contract (must match Java semantics exactly)
+
+```ts
+abstract class CircuitElm {
+  x = 0; y = 0; x2 = 0; y2 = 0; flags = 0;
+  nodes: number[] = []; volts: number[] = [];
+  abstract getDumpType(): number | string;      // same ids as Java (§A.1 table)
+  getPostCount(): number { return 2; }
+  getVoltageSourceCount(): number { return 0; }
+  getInternalNodeCount(): number { return 0; }
+  nonLinear(): boolean { return false; }
+  setPoints(): void { /* port geometry */ }
+  stamp(e: Stamper): void {}
+  startIteration(): void {}                     // companion-model updates (C, L)
+  doStep(e: Stamper): void {}                   // per Newton subiteration
+  stepFinished(): void {}
+  reset(): void {}
+  calculateCurrent(): void {}
+  serialize(tk: TokenWriter): void {}           // token order == Java dump()
+  // params(): ParamSpec[]; getParam/setParam by key
+}
+```
+
+The `Stamper` interface is the stamp API subset of `core/engine.ts` — elements never
+see the matrix directly (same discipline as Java, where `sim.stampX` is the seam).
+
+### 5.4 Known Java behaviors that MUST be preserved (easy to miss)
+
+- Voltage color gradient and current-dot spacing are cosmetic — but `curcount`
+  update math lives in `CircuitElm.updateDotCount` and golden tests don't cover it;
+  port it anyway for visual parity.
+- `RailElm`/`VoltageElm` waveform phase conventions (`freqTimeZero` handling) —
+  golden tests will catch, but read the Java comments first.
+- Capacitor/inductor companion models change stamps between `stamp()` (constant part)
+  and `doStep()` (per-iteration) — the split matters for the `ROW_CONST`
+  simplification. Port `stamp/startIteration/doStep` as a unit.
+- Switch `getShortcut`/flags encode momentary vs toggle; SPDT `Switch2Elm` dump
+  format differs — check `tests/` corpus files that use them.
+- `OpAmpElm` output clamping uses `lastvd` damping — port it or converge failures
+  appear on the integrator fixture.
+- Ground is node 0 everywhere; `stampVoltageSource(ground, n, vs)` overloads with
+  implicit ground — match the overload semantics with explicit `GROUND = -1`?
+  **No** — keep the Java convention exactly (nodes array, ground = node index 0)
+  to keep the port mechanical.
+
+---
+
+## 6. Oracle & golden harness spec (Phase 0 detail)
+
+### 6.1 `stepSim` patch sketch (JSInterface.java)
+
+```java
+void stepSim(int n) {
+    // deterministic: adaptive off, exactly n * timeStep of sim time
+    app.setSimRunning(false);
+    for (int i = 0; i < n; i++)
+        app.simulationManager.stepDeterministic(); // add: one timeStep, no repaint
+}
+```
+plus `getNodeVoltageList()` returning `JsArrayNumber`. Add
+`stepDeterministic()` next to `runCircuit` (:1253) — it is the same body with the
+frame-time budget and adaptive subdivision removed. Keep the patch ≤ ~60 lines,
+commit separately (`oracle: deterministic stepping API`), let CI compile it.
+
+### 6.2 Recorder protocol
+
+- Fixture inputs live in `tools/golden-recorder/fixtures/*.circuit.txt` with a
+  header comment naming probes: `#probe node:LABEL elm:INDEX:current`. Use
+  `LabeledNodeElm` labels, not raw node indices, wherever possible (node numbering
+  must match between engines only via labels).
+- Recorder resolves labels through the JS API (`getLabeledNodeVoltages` exists
+  already), records `steps × probes` Float64 arrays, writes JSON (arrays plain, not
+  base64 — diffs stay reviewable).
+- Comparator (`web/engine/test/golden.util.ts`): pointwise
+  `|a-b| <= atol + rtol*max(|a|,|b|)`; per-fixture tolerance overrides in the JSON.
+  On failure print: first divergent step, both values, and an ASCII sparkline of
+  both traces around it (debuggability is the point — invest here).
+
+### 6.3 Determinism rules
+
+Oracle and TS engine both run: fixed `dt` from the `$` line, adaptive subdivision
+off, same iteration caps, `Math.exp` etc. are IEEE-identical across JVM/GWT-JS and
+V8 for the operations used — if a divergence traces to transcendental rounding,
+document it in `oracle-divergences.md` and raise that fixture's tolerance, never
+"fix" it by tweaking engine math.
+
+---
+
+## 7. Falstad text format (Phase 1 detail)
+
+- Options line: `$ <flags> <maxTimeStep> <iterCount-ish speed> <currentSpeed>
+  <voltageRange> <powerRange> <minTimeStep?>` — port the exact reader from
+  `CircuitLoader.java` (verify field meanings there; do not guess).
+- Element line: `<type> <x> <y> <x2> <y2> <flags> <tokens…>` where `<type>` is a
+  dump id (int) or letter (`w`,`r`,`g`,`s`,`c`,`l`,`v`,`t`,…). The registry table in
+  §A.1 lists both forms per element (extract letters from each Java `getDumpType()`).
+- Unknown element policy: wrap tokens in `UnknownElm` (renders a labeled grey box,
+  posts at x/y–x2/y2, does not stamp; serializes verbatim). This keeps Tier-2/3
+  circuits loadable and non-destructive from day one.
+- Scope lines (`o …`), hint lines (`h …`), adjustable sliders (`38 …` / `&` params):
+  parse and preserve; wire scopes up in Phase 6, sliders in Phase 7.
+
+---
+
+## 8. Element porting playbook (repeat per element)
+
+### 8.1 Checklist (one commit per element)
+
+1. Read the Java file top to bottom. Note ctor token order, flags, edge cases.
+2. `elements/<name>/model.ts` — port fields, `setPoints`, stamps, steps, serialize.
+3. `elements/<name>/params.ts` — `ParamSpec[]` from `getEditInfo/setEditValue`.
+4. Register in `elements/registry.ts` (dump id + letter + display name + category +
+   shortcut). The registry test asserts: ids unique, every Tier-1 corpus file's
+   element set resolvable.
+5. Fixture: minimal circuit exercising its physics (§A.3 has the list) → record via
+   oracle → golden test green.
+6. `app/src/canvas/draw/<name>.ts` — port `draw()` (Phase 5+ only; model can land
+   first).
+
+### 8.2 Worked example — ResistorElm (do Phase 1 exactly like this)
+
+```ts
+// elements/resistor/model.ts
+export class ResistorElm extends CircuitElm {
+  resistance = 100;
+  constructor(t?: Tokenizer) { super(t); if (t) this.resistance = t.nextDouble(); }
+  getDumpType() { return "r"; }
+  stamp(e: Stamper) { e.stampResistor(this.nodes[0], this.nodes[1], this.resistance); }
+  calculateCurrent() { this.current = (this.volts[0] - this.volts[1]) / this.resistance; }
+  serialize(w: TokenWriter) { w.push(this.resistance); }
+  params(): ParamSpec[] {
+    return [{ kind: "number", key: "resistance", label: "Resistance (ohms)",
+              min: 1e-6, allowSlider: true }];
+  }
+}
+```
+
+Golden fixture `resistor-divider`: rail 10 V → R1 1k → node `mid` (labeled) → R2 2k
+→ ground; assert `mid ≈ 6.667 V` every step (also a direct unit test — golden files
+are for dynamics; trivial DC values get plain asserts too).
+
+---
+
+## 9. ExtChip in the palette (Phase 4/6 detail — the point of the project)
+
+- Palette category **Co-simulated chips** with two cards (extensible via
+  `catalog.ts`):
+  - **FPGA — Tang Nano 9K (fpgasim)**: default source = 27 MHz divider blinky,
+    default pins auto-adopted from the Verilog top after first Apply, bridge default
+    `ws://localhost:3100`.
+  - **MCU — STM32 Blue Pill (mcusim)**: default source = PC13 blinky C with
+    `LOCKSTEP_PINS("PC13:out")`, engine `mainline`, bridge `ws://localhost:3101`.
+- Placing a card creates an `ExtChipElm` with the preset; the drawer (§4 Phase 6)
+  opens automatically for a fresh chip.
+- Electrical semantics identical to the Java element: inputs sampled at
+  `> highVoltage/2` (3.3 V family default), outputs driven 0/3.3 V push-pull via
+  per-output voltage sources; quantum pacing + pause exactly as
+  `bridge/client.ts` dictates (one step in flight; pause at one-quantum skew;
+  resume on reply/error/ended — the client's unit tests already pin this).
+- Serialization: keep dump type 460 and the Java token order
+  (`url pinspec quantum engine source`, escaped) so circuits made with the GWT tool
+  load unchanged.
+- Status surfaces: chip body tint by status (grey unconfigured / amber compiling /
+  green running / red error) + first error line under the chip; full log in drawer.
+
+---
+
+## 10. Risks and mitigations
+
+| Risk | Mitigation |
+|---|---|
+| Nonlinear convergence differs from oracle (iteration order, damping) | Port `limitStep`/damping byte-faithfully; nonlinear tolerance tier (1e-3); divergences documented, never patched around silently. |
+| Row-simplification port bugs corrupt matrices silently | Property test: for each golden fixture, dump the stamped matrix from both engines at t=0 (add temporary oracle hook if needed) and diff once during Phase 1 bring-up. |
+| Canvas perf on big circuits | Falstad redraws everything per frame and survives; measure with the largest corpus circuit; only then consider dirty-rect. |
+| Adaptive timestep behavior mismatch (non-golden mode) | Not equality-tested; behavioral tests only (stability on stiff fixture, no NaN). Golden mode always fixed-dt. |
+| `CustomCompositeElm` (subcircuits) needed earlier than Tier 2 | UnknownElm preserves them; if scope.io corpus needs them, pull into Phase 7 triage. |
+| scope.io regression at switchover | Embed shim keeps the `window.CircuitJS1` surface; staging test before swap; GWT build stays deployable until sign-off. |
+| Sonnet context drift across sessions | §2 ritual + §12 checklist + phase gates; vault notes for anything surprising. |
+| GWT oracle patch cannot compile locally (no maven egress in sandbox) | CI compiles on push; keep the patch minimal; recorder runs against `site/` build produced by CI artifact if needed. |
+
+---
+
+## 11. What explicitly does NOT change
+
+- fpgasim/mcusim repos: bridge servers, harness/glue codegen, sandbox posture,
+  Dockerfiles, their standalone UIs (still embedded in scope.io /tools today).
+- `docs/bridge-protocol.md` (additive evolution only, version-bumped).
+- The vault conventions and the workspace core loop.
+
+---
+
+## 12. Live progress checklist (tick as you go; keep honest)
+
+- [ ] P0 scaffolding + workspaces green
+- [ ] P0 oracle stepSim patch merged, CI green
+- [ ] P0 recorder + ≥15 deterministic fixtures
+- [ ] P1 lu/analyze/stamp/run ported; matrix-diff bring-up check done
+- [ ] P1 linear elements + text I/O; gate green
+- [ ] P2 nonlinear set; gate green
+- [ ] P3 digital + ChipElm; gate green
+- [ ] P4 bridge client + ExtChip + engine integration tests green
+- [ ] P5 editor usable end-to-end; smoke suite green
+- [ ] P6 scopes + ExtChip drawer + event lanes; live demo circuit committed
+- [ ] P7 corpus 100% parse/round-trip; priority Tier-2 triage agreed
+- [ ] P8 embed shim + deploy + sign-off + GWT retirement decision
+
+---
+
+## Appendix A — Tables
+
+### A.1 Tier 1 (port in this order; Java file names in `client/`)
+
+| # | Element | Java class | Dump id | Phase |
+|---|---|---|---|---|
+| 1 | Wire | WireElm | w | P1 |
+| 2 | Ground | GroundElm | g | P1 |
+| 3 | Resistor | ResistorElm | r | P1 |
+| 4 | DC voltage / battery | DCVoltageElm (VoltageElm) | v | P1 |
+| 5 | AC voltage | ACVoltageElm | (VoltageElm wf) | P1 |
+| 6 | Rail / VCC | RailElm | R | P1 |
+| 7 | Clock rail | ClockElm | (RailElm wf) | P1 |
+| 8 | Switch | SwitchElm | s | P1 |
+| 9 | SPDT switch | Switch2Elm | S | P1 |
+| 10 | Capacitor | CapacitorElm | c | P1 |
+| 11 | Inductor | InductorElm | l | P1 |
+| 12 | Current source | CurrentElm | i | P1 |
+| 13 | Potentiometer | PotElm | 174 | P1 |
+| 14 | Analog output/probe | OutputElm / ProbeElm | O / p | P1 |
+| 15 | Labeled node | LabeledNodeElm | 207 | P1 |
+| 16 | Text | TextElm | x | P1 |
+| 17 | Box | BoxElm | b | P1 |
+| 18 | Ammeter | AmmeterElm | 370 | P1 |
+| 19 | Diode | DiodeElm | d | P2 |
+| 20 | Zener | ZenerElm | z | P2 |
+| 21 | LED | LEDElm | 162 | P2 |
+| 22 | NPN/PNP transistor | TransistorElm | t | P2 |
+| 23 | N/P MOSFET | MosfetElm | f | P2 |
+| 24 | Op-amp | OpAmpElm | a | P2 |
+| 25 | Logic input | LogicInputElm | L | P3 |
+| 26 | Logic output | LogicOutputElm | M | P3 |
+| 27–32 | AND/OR/NAND/NOR/XOR/Inverter | AndGateElm … InverterElm | 150/152/151/153/154/I | P3 |
+| 33 | D flip-flop | DFlipFlopElm | 155 | P3 |
+| 34 | JK flip-flop | JKFlipFlopElm | 156 | P3 |
+| 35 | 7-segment | SevenSegElm | 157 | P3 |
+| 36 | Custom logic | CustomLogicElm | 208 | P3 |
+| 37 | **External chip (FPGA/MCU)** | ExtChipElm | 460 | P4 |
+| 38 | Sweep (freq source) | SweepElm | 170 | P7 triage |
+| 39 | Var. voltage rail | VarRailElm | 172 | P7 triage |
+| 40 | Tri-state buffer | TriStateElm | 180 | P7 triage |
+
+(Verify each dump id against `getDumpType()` in the Java file when porting — the
+letters/ids above are from the Java sources; treat the Java as authoritative.)
+
+### A.2 Tier 2 (post-switchover backlog, roughly ordered by scope.io value)
+
+Transformer, TappedTransformer, Relay, 555 Timer, Comparator/Schmitt pair, ADC, DAC,
+Counter(+w/load), Ring counter, Latch, SIPO/PISO shift registers, Mux/Demux,
+SRAM/ROM, Full/Half adder, Bus transceiver/splitter, **CustomCompositeElm
+(subcircuits — biggest single item)**, Crystal, PolarCapacitor, JFET, SCR, Triac,
+Optocoupler, CCVS/CCCS/VCVS/VCCS, TransLine, Memristor, TunnelDiode, Varactor,
+Monostable, DelayBuffer, AM/FM sources, Antenna, Sequence generator.
+
+Tier 3 = the remaining long tail (audio I/O, motors, spark gap, unijunction, diac,
+Darlington, 14/16-seg, data recorder, …) — on demand.
+
+### A.3 Golden fixture list (minimum; grow freely)
+
+Linear (P1): resistor-divider · rc-lowpass-step · rl-step · lrc-ring (`tests/lrc.txt`)
+· cap-charge (`tests/capac.txt`) · wheatstone · current-source-into-r · pot-sweep ·
+switch-toggle-transient · ac-rail-into-rc.
+Nonlinear (P2): diode-clipper · bridge-rectifier (`tests/fullrect.txt`) · zener-reg ·
+led-series-r · bjt-common-emitter · mosfet-inverter-dc-sweep · opamp-follower ·
+opamp-integrator.
+Digital (P3): gate-truth-tables · dff-divider · tflipflop corpus (`tests/tflipflop.txt`)
+· 7seg-counter (`tests/7seg.txt`) · custom-logic (`tests/custom.txt`) ·
+schmitt (`tests/schmitt.txt`, if Tier-1-only variant possible).
+
+### A.4 Commands
+
+```bash
+# oracle
+python3 -m http.server 8123 --directory site &
+node tools/golden-recorder/record.mjs --all          # writes web/engine/test/golden/
+
+# engine
+npm -w web/engine run test                            # vitest (unit + golden)
+npm -w web/engine run typecheck
+
+# app
+npm -w web/app run dev                                # http://localhost:3000
+npm -w web/app run test && npm -w web/app run build
+
+# bridges (for ExtChip work; from sibling repos)
+(cd ../fpgasim && npm run bridge)                     # :3100
+(cd ../mcusim  && npm run bridge)                     # :3101
+
+# engine ↔ real-backend integration (gated on toolchains)
+npm -w web/engine run test:integration
+```
