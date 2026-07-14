@@ -765,6 +765,78 @@ stays unchecked.
 
 ---
 
+### 2026-07-14 session note, continued a third time — first-cut canvas editor
+
+Pontsho asked to see the app running; it was the untouched `create-next-app`
+scaffold (expected — nothing had wired `web/app` to `web/engine` yet). Built a
+first slice of Phase 5 rather than the full 3-4 session scope: a real,
+usable canvas editor for every Tier-1 element ported so far, deliberately
+smaller than §4 Phase 5's full task list (no pan/zoom, no undo/redo, no
+moving an already-placed element, no schema-driven edit dialogs, no
+file open/save, no scopes) — a foundation to build the rest of Phase 5/6 on,
+not Phase 5 itself signed off.
+
+What exists now, all under `web/app/src/`:
+- `engine/store.ts` — the single `CircuitEngine` instance the plan's §3.2
+  seam describes, owned outside React, exposing `subscribe`/`getVersion` for
+  `useSyncExternalStore` plus `addElement`/`removeElement`/`reanalyze`/
+  `run`/`stop`/`step`, all wrapped so a thrown singular-matrix/convergence
+  error becomes a status message instead of crashing the render loop.
+- `canvas/draw.ts` + `CircuitCanvas.tsx` — per-element draw functions keyed
+  by `getDumpType()` (not `instanceof`, deliberately -- `NandGateElm extends
+  AndGateElm`, `LEDElm`/`ZenerElm extend DiodeElm`, `ClockElm extends RailElm
+  extends VoltageElm`, so an instanceof chain would need careful subclass-
+  first ordering everywhere; dump-id keys sidestep that entirely). Body
+  shapes are simplified (zigzag resistor, coil inductor, plate capacitor,
+  triangle diode/LED/Zener, generic gate boxes, generic 3-terminal circle for
+  transistor/mosfet) rather than pixel-accurate ports of Java's `draw()`
+  methods -- those are a real future task, not attempted here. Leads are
+  computed by calling `elm.calcLeads()` at draw time for elements that don't
+  already do it in `setPoints()`, matching how Java's own simple elements
+  (e.g. `ProbeElm.draw()`) call `calcLeads()` lazily rather than precomputing
+  it.
+- `palette/palette.ts` — placeable Tier-1 elements grouped into simplified
+  categories (not yet the full `Menus.java` tree from plan §5 task 4), built
+  on `createElement()` (the same dump-id factory a loaded circuit uses) so
+  there's one construction path for both.
+- Interaction, intentionally minimal: a single drag gesture places any
+  element (click without dragging gets a default 3-grid-cell span rather
+  than a degenerate zero-length element); click selects via nearest-segment
+  hit-testing; Delete/Backspace removes the selection. No element-moving yet
+  -- documented as a gap, not silently missing.
+- `toolbar/Toolbar.tsx`, `inspector/Inspector.tsx` — run/stop/step/speed,
+  and a generic field-dump inspector (dump type, V, I, plus any of a fixed
+  list of common fields the selected element happens to have) standing in
+  for the schema-driven `<ElementDialog>` plan §5 task 5 describes.
+
+Also: added `web/engine/src/index.ts` (didn't exist -- `engine/package.json`
+`"main"` pointed at a file that had never been created), added
+`@fulgurlab/engine` as an `app` dependency, added `next.config.ts`
+`transpilePackages` (Next won't compile a workspace package's raw TS
+otherwise). Dropped `next/font/google` (Geist/Geist Mono) from `layout.tsx`
+in favor of a system font stack -- fonts.googleapis.com isn't reachable from
+this sandbox; `next dev` fell back silently, but `next build` hung
+indefinitely on it even with telemetry disabled and both bundlers (webpack
+and Turbopack). Note for next session: **`next build` still hangs in this
+sandbox even after the font fix**, reproducibly, past 40+ seconds with no
+output beyond the version banner -- root cause not found yet (isolated to:
+not fonts, not telemetry, not Turbopack-specific). `next dev` compiles and
+serves correctly and `tsc --noEmit`/`eslint` are both clean, so the code
+itself checked out by every means available in this sandbox, but a real
+`next build` pass (the actual Phase 5 gate criterion) still needs to be run
+somewhere that isn't this sandbox before calling it verified.
+
+No interactive (mouse-driven) testing was possible from this sandbox either
+-- puppeteer is installed in `tools/golden-recorder` but has no downloaded
+Chromium binary here, and Claude-in-Chrome-style browser control drives
+Pontsho's actual machine, which can't reach a server running inside this
+sandbox. Verified via `next dev` + curl (loads, serves expected markup, no
+server errors) and careful manual review instead. This is the first real
+thing to click around in this repo -- worth Pontsho trying it locally
+(`cd web/app && npm run dev`) before trusting the interaction details.
+
+---
+
 ## Appendix A — Tables
 
 ### A.1 Tier 1 (port in this order; Java file names in `client/`)
