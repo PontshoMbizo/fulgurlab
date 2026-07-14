@@ -150,8 +150,26 @@ export abstract class CircuitElm {
     getMatrixConnection(n1: number, n2: number): boolean { return this.getConnection(n1, n2); }
     getWireSegments(list: WireSegment[]): void {}
     getBusWidth(): number { return 1; }
-    getConnectedPost(j: number): Point | null { return null; }
+    // Java: CircuitElm.getConnectedPost() defaults to `point2`, and the 1-arg
+    // overload just delegates to it (CircuitElm.java:719-726) — NOT null. This
+    // only matters for elements with isRemovableWire()==true (the only ones
+    // Analyzer.calculateWireClosure() consults it for), so the unconditional
+    // point2 default is harmless for everything else. WireElm/GroundElm/
+    // LabeledNodeElm all override this with their own real logic; this default
+    // exists so a *future* isRemovableWire()==true element that forgets to
+    // override it fails the same faithful way Java would, rather than silently
+    // never connecting (the exact bug class found and fixed this session).
+    getConnectedPost(j: number): Point | null { return this.point2; }
     getChildElmList(): CircuitElm[] | null { return null; }
+    // Java: CircuitElm.getVoltageDiff() default (:690-692). Single-post
+    // elements (OutputElm, GroundElm, LabeledNodeElm) override this with
+    // volts[0] (or 0) since volts[1] isn't meaningful for them.
+    getVoltageDiff(): number { return this.volts[0] - this.volts[1]; }
+    // Java: `ce instanceof RailElm` is used directly by SimulationManager.
+    // setGroundNode() to gate the "alias first voltage source's post to
+    // ground" fallback — that fallback must NOT fire when a rail is present,
+    // even without an explicit ground (see RailElm.isRail() override).
+    isRail(): boolean { return false; }
     
     // Java: CircuitElm.allocNodes() — `volts = new double[n]`, which the JVM
     // zero-fills automatically. JS arrays don't zero-fill, so without this,

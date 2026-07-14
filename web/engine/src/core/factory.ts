@@ -35,6 +35,13 @@ const dumpTypeMap: Record<string, ElementCtor> = {
     '431': elements.XnorGateElm,
     '162': elements.LEDElm,
     '174': elements.PotElm,
+    'O': elements.OutputElm,
+    'p': elements.ProbeElm,
+    '207': elements.LabeledNodeElm,
+    'x': elements.TextElm,
+    'b': elements.BoxElm,
+    '370': elements.AmmeterElm,
+    'z': elements.ZenerElm,
 };
 
 export function createElement(

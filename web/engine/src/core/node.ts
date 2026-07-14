@@ -1,4 +1,11 @@
 import { CircuitElm, Point, pointKey } from '../elements/base';
+// Value imports of concrete elements from the generic Analyzer are unusual
+// but match Java exactly: SimulationManager.calculateWireClosure() calls
+// LabeledNodeElm.resetNodeList() and GroundElm.resetNodeList() directly,
+// by name, right at its own top. No runtime import cycle results (neither
+// module imports anything as a *value* back from this one).
+import { LabeledNodeElm } from '../elements/labeled_node';
+import { GroundElm } from '../elements/ground';
 
 export class CircuitNodeLink {
     num: number;
@@ -233,6 +240,13 @@ export class Analyzer {
     }
 
     private calculateWireClosure() {
+        // Matches SimulationManager.calculateWireClosure()'s exact top-of-
+        // method call order: these two static registries must be reset once
+        // per analysis, before the closure walk below reads/writes them via
+        // GroundElm/LabeledNodeElm's getConnectedPost() overrides.
+        LabeledNodeElm.resetNodeList();
+        GroundElm.resetNodeList();
+
         this.nodeMap.clear();
         this.wireInfoList = [];
         this.wireInfoElmSet = new Set(this.elmList);
@@ -282,6 +296,7 @@ export class Analyzer {
 
     private setGroundNode() {
         let gotGround = false;
+        let gotRail = false;
         let volt: CircuitElm | null = null;
 
         CircuitNode.ground = new CircuitNode();
@@ -298,12 +313,24 @@ export class Analyzer {
                     else this.nodeMap.set(pointKey(pt), new NodeMapEntry(CircuitNode.ground));
                 }
             }
+            if (ce.isRail()) {
+                gotRail = true;
+            }
             if (!volt && ce.isVoltageSource()) {
                 volt = ce;
             }
         }
 
-        if (!gotGround && volt) {
+        // Java: `if (!subcircuit && !gotGround && volt != null && !gotRail)`
+        // (SimulationManager.setGroundNode(), :509) -- the fallback must NOT
+        // fire when a rail is present, even with no explicit ground element.
+        // Missing this `!gotRail` check was a real bug found this session: a
+        // circuit with only a RailElm (no GroundElm) had the fallback alias
+        // the rail's OWN node onto CircuitNode.ground -- which is deliberately
+        // left with matrix=null -- crashing the solver. (subcircuit handling
+        // doesn't exist in this engine yet, so that part of the condition
+        // is omitted.)
+        if (!gotGround && !gotRail && volt) {
             const pt = volt.getPost(0);
             if (pt) {
                 const cln = this.nodeMap.get(pointKey(pt));

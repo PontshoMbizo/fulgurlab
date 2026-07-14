@@ -167,6 +167,7 @@ export class RailElm extends VoltageElm {
     getDumpType() { return 'R'; }
     getPostCount() { return 1; }
     hasGroundConnection(n1: number) { return true; }
+    isRail() { return true; }
 
     stamp(stamper: Stamper) {
         if (this.waveform === VoltageElm.WF_DC) {
