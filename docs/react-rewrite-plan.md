@@ -609,6 +609,94 @@ are for dynamics; trivial DC values get plain asserts too).
 - [ ] P7 corpus 100% parse/round-trip; priority Tier-2 triage agreed
 - [ ] P8 embed shim + deploy + sign-off + GWT retirement decision
 
+### 2026-07-14 session note (not a gate sign-off — see caveats)
+
+Found on session start: the previous session's uncommitted work past
+`332d4973` had been wiped by a `git reset` (confirmed via reflog: `HEAD@{0}:
+reset: moving to HEAD` right after the commit, no target-commit change). The
+gitignored `web/engine/dist/` build output and a Next.js SSR chunk in
+`web/app/.next/` survived the reset (untouched by `git reset --hard`) and were
+used to reconstruct the lost TypeScript. This is now committed... **except it
+isn't** — `.git/index.lock` in this checkout is stale and cannot be removed
+from the Cowork sandbox (file deletion is blocked in mounted project folders).
+Someone needs to `rm .git/index.lock` from an actual terminal before any of
+this — or anything else — can be committed here.
+
+What's in `web/engine/src/` right now (typechecks, `npm test` green, 10
+tests):
+- Core: `stampNonLinear` + `t/timeStep/converged/subIterations` added to the
+  `Stamper` interface; `CircuitEngine.clear()/setup()`; `startIteration`/
+  `stepFinished` now thread the stamper through (elements need it).
+  `CircuitElm.setVoltageSource()` default now assigns `voltSource` (Java
+  `CircuitElm.java:683-685` is not a no-op — the previous draft's op-amp/gate/
+  logic-input/inverter would have had a permanently-undefined `voltSource`
+  without this). `preStamp()`/`allocNodes()` now zero-fill `volts[]` (Java
+  arrays zero-init automatically; JS doesn't — without this, diode/transistor/
+  mosfet/op-amp read `undefined` → `NaN` into the matrix on the first
+  sub-iteration of a circuit's very first step).
+- Elements: wire, ground, resistor, voltage/rail/clock, switch, switch2 (new),
+  capacitor, inductor, current (new), pot, diode, LED, transistor, mosfet,
+  op-amp, the AND/OR/NAND/NOR/XOR/XNOR gate family, logic input/output,
+  inverter (new).
+- Bugs fixed against the Java oracle before committing: LogicInputElm dump id
+  was `'i'` (that's CurrentElm's id — collision), should be `'L'`.
+  LogicOutputElm was `'O'`, should be `'M'`. XnorGateElm was `155` (that's
+  DFlipFlopElm's id), should be `431`. OpAmpElm.stamp() had
+  `stampMatrixVSNode`/`stampMatrixNodeVS` swapped for the node-2 KCL-row entry
+  (row/col reversed vs. Java's `stampMatrix(nodes[2], voltSource, 1)`).
+
+Still missing from Tier-1 (§A.1): OutputElm/ProbeElm, LabeledNodeElm, TextElm,
+BoxElm, AmmeterElm, ZenerElm as its own class (the shared diode model supports
+a breakdown voltage but nothing constructs one), the general ChipElm base
+(separate from GateElm), DFlipFlopElm, JKFlipFlopElm, SevenSegElm,
+CustomLogicElm. **Multi-post elements (op-amp, pot, gate family, switch2,
+transistor, mosfet) have no `setPoints()`/`getPost()` geometry yet**, so they
+can't actually be wired into a circuit built from x/y coordinates the way the
+existing tests build 2-post circuits — only dump-type and isolated-method
+tests exercise them right now. `io/falstadText.ts` (§7 — options line fields,
+escape scheme, scope/hint lines, unknown-element preservation) is still just
+the placeholder `core/parser.ts` (element lines + `$` timeStep only).
+
+None of Phase 0's gates were touched this session: no oracle `stepSim` patch,
+no golden-recorder, no fixtures beyond the one placeholder. So while a lot of
+Tier-1 element *code* exists now, **the checklist above is intentionally still
+all-unchecked** — nothing has been verified against the oracle, which is the
+actual bar for a phase gate per §2 rule 2.
+
+---
+
+### 2026-07-14 session note, continued — multi-post geometry + a real connectivity bug
+
+Added `setPoints()`/`getPost()` overrides for all six multi-post elements
+(OpAmpElm, GateElm family, PotElm, TransistorElm, MosfetElm, Switch2Elm) plus
+base-class geometry helpers (`interpPoint`/`interpPoint2`/`calcLeads`,
+byte-for-byte incl. Java's `Math.floor(...+.48)` pixel bias). New
+`test/multipost-geometry.test.ts` wires each of these into an actual circuit
+by coordinate (rather than testing them in isolation), since that's the only
+way to exercise `getPost()` the way a text-format loader would.
+
+Found and fixed a foundational connectivity bug in the process, not specific
+to any one element: `WireElm` had no `getConnectedPost()` override (fixed —
+now returns the opposite endpoint per `WireElm.java`), but the deeper bug was
+in `Analyzer.analyze()`'s ordering. `calculateWireClosure()` ran *before* the
+`preStamp()` loop (which resolves `point1`/`point2` from raw x/y/x2/y2), so
+any freshly-constructed `WireElm` not manually `.preStamp()`'d by the caller
+had its wire-closure lookup silently keyed off the uninitialized `{x:0,y:0}`
+default instead of its real endpoint. In real Falstad this can't happen —
+`setPoints()` runs at UI placement/move time, long before analysis — but this
+port has no interactive placement step yet, so `preStamp()` has to run
+reactively, and it needs to run for *every* element before *any* analysis
+step reads post coordinates, not just before node-list construction. Moved
+the `preStamp()` loop from `makeNodeList()` to the top of `analyze()`, before
+`calculateWireClosure()`. Symptom before the fix was nasty: not a crash at the
+wire itself, but a matrix row for an unrelated node ending up all-zero
+(singular matrix) several steps downstream — worth remembering if something
+similar resurfaces.
+
+All 15 tests green (`recovered-elements.test.ts` +
+`multipost-geometry.test.ts` + pre-existing), `tsc --noEmit` clean. Still
+uncommitted — `.git/index.lock` blocker from the previous note is unresolved.
+
 ---
 
 ## Appendix A — Tables

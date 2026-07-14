@@ -127,6 +127,23 @@ export class Analyzer {
         }
         this.elmList = expanded;
 
+        // Must run before calculateWireClosure(): setPoints() resolves
+        // point1/point2 (and any multi-post fields like a wire's endpoints or
+        // an op-amp's input posts) from the raw x/y/x2/y2 coordinates. In real
+        // Falstad, setPoints() runs at placement/move time in the UI, so by
+        // the time analysis runs, geometry is already resolved. This port has
+        // no interactive placement step yet, so preStamp() (setPoints() +
+        // allocNodes()) is called here, reactively, for every element before
+        // any analysis step reads post coordinates — including wire closure,
+        // which was silently reading point1/point2 as their uninitialized
+        // {x:0,y:0} defaults before this was moved here (verified: caused
+        // WireElm.getConnectedPost() to report the wrong endpoint, which
+        // collapsed a feedback wire's two nodes onto the wrong pair and left
+        // one node with no stamps at all -- an all-zero row / singular matrix).
+        for (const ce of this.elmList) {
+            ce.preStamp();
+        }
+
         this.calculateWireClosure();
         this.setGroundNode();
         this.makeNodeList();
@@ -297,10 +314,7 @@ export class Analyzer {
     }
 
     private makeNodeList() {
-        for (const ce of this.elmList) {
-            ce.preStamp();
-        }
-
+        // preStamp() now runs earlier, in analyze(), before calculateWireClosure().
         for (const ce of this.elmList) {
             const inodes = ce.getInternalNodeCount();
             const posts = ce.getPostCount();

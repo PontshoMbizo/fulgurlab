@@ -17,6 +17,20 @@ export class CircuitEngine implements Stamper {
     converged: boolean = true;
     subIterations: number = 0;
 
+    // Reset to an empty circuit (used by CircuitParser before loading new text).
+    clear() {
+        this.elmList = [];
+        this.nodeList = [];
+        this.voltageSources = [];
+        this.matrices = null;
+        this.t = 0;
+    }
+
+    // Convenience wrapper used by CircuitParser after populating elmList.
+    setup() {
+        this.analyzeAndStamp();
+    }
+
     analyzeAndStamp() {
         const analyzer = new Analyzer(this.elmList);
         const result = analyzer.analyze();
@@ -81,7 +95,7 @@ export class CircuitEngine implements Stamper {
         if (!this.matrices || this.elmList.length === 0) return;
 
         for (const ce of this.elmList) {
-            ce.startIteration();
+            ce.startIteration(this);
         }
 
         const subiterCount = 5000;
@@ -133,7 +147,7 @@ export class CircuitEngine implements Stamper {
         }
 
         for (const ce of this.elmList) {
-            ce.stepFinished();
+            ce.stepFinished(this);
         }
 
         this.calcWireCurrents();
@@ -230,4 +244,12 @@ export class CircuitEngine implements Stamper {
     stampRightSideVS(vs: VoltageSource, x: number) {
         vs.matrix!.rightSide[vs.row - 1] += x;
     }
+
+    // No-op: see the Stamper interface doc comment in elements/base.ts. Java's
+    // SimulationManager.stampNonLinear() marks a node's row as needing full
+    // re-stamping; this engine currently re-stamps the whole matrix for any
+    // partition containing a nonlinear element (m.nonLinear), so the per-node
+    // marking has no effect yet. Elements still call it for parity with the Java
+    // source (port faithfully first).
+    stampNonLinear(n: CircuitNode) {}
 }

@@ -3,9 +3,15 @@ import { CircuitElm, Stamper } from './base';
 export class ResistorElm extends CircuitElm {
     resistance: number;
 
-    constructor(x: number, y: number, x2: number, y2: number, flags: number, resistance: number = 1000) {
+    constructor(x: number, y: number, x2: number, y2: number, flags: number, params?: string[] | number) {
         super(x, y, x2, y2, flags);
-        this.resistance = resistance;
+        if (Array.isArray(params) && params.length > 0) {
+            this.resistance = parseFloat(params[0]) || 1000;
+        } else if (typeof params === 'number') {
+            this.resistance = params;
+        } else {
+            this.resistance = 1000;
+        }
     }
 
     getDumpType() { return 'r'; }
