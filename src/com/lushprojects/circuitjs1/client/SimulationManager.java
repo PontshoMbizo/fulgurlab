@@ -1250,6 +1250,70 @@ public class SimulationManager {
     boolean converged;
     int subIterations;
     
+    void stepDeterministic() {
+	if (matrices == null || elmList.size() == 0) {
+	    return;
+	}
+	int i, j, subiter;
+	for (i = 0; i != elmArr.length; i++)
+	    elmArr[i].startIteration();
+	app.ui.steps++;
+	int subiterCount = 5000;
+	for (subiter = 0; subiter != subiterCount; subiter++) {
+	    converged = true;
+	    subIterations = subiter;
+	    for (int mi = 0; mi != matrices.length; mi++) {
+		CircuitMatrix m = matrices[mi];
+		for (i = 0; i != m.size; i++)
+		    m.rightSide[i] = m.origRightSide[i];
+		if (m.nonLinear) {
+		    for (i = 0; i != m.size; i++)
+			for (j = 0; j != m.size; j++)
+			    m.matrix[i][j] = m.origMatrix[i][j];
+		}
+	    }
+	    for (i = 0; i != elmArr.length; i++)
+		elmArr[i].doStep();
+	    if (app.stopMessage != null)
+		return;
+	    for (int mi = 0; mi != matrices.length; mi++) {
+		CircuitMatrix m = matrices[mi];
+		if (m.nonLinear) {
+		    if (converged && subiter > 0)
+			continue;
+		    if (!lu_factor(m.matrix, m.size, m.permute, m)) {
+			stop("Singular matrix!", null);
+			return;
+		    }
+		}
+		lu_solve(m.matrix, m.size, m.permute, m.rightSide, m);
+		applySolvedRightSide(m);
+	    }
+	    if (!circuitNonLinear)
+		break;
+	    if (converged && subiter > 0)
+		break;
+	}
+	if (subiter == subiterCount) {
+	    stop("Convergence failed!", null);
+	    return;
+	}
+	t += timeStep;
+	timeStepAccum += timeStep;
+	if (timeStepAccum >= maxTimeStep) {
+	    timeStepAccum -= maxTimeStep;
+	    timeStepCount++;
+	}
+	for (i = 0; i != elmArr.length; i++)
+	    elmArr[i].stepFinished();
+	calcWireCurrents();
+	app.onTimeStep();
+	for (int mi = 0; mi != matrices.length; mi++) {
+	    CircuitMatrix m = matrices[mi];
+	    for (i = 0; i != m.nodeCount; i++)
+		m.lastNodeVoltages[i] = m.nodeVoltages[i];
+	}
+    }
     void runCircuit(boolean didAnalyze) {
 	if (matrices == null || elmList.size() == 0) {
 	    matrices = null;

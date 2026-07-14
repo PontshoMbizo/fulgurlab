@@ -60,6 +60,22 @@ public class JSInterface {
     double getMaxTimeStep() { return app.sim.maxTimeStep; }
     void setMaxTimeStep(double ts) { app.sim.maxTimeStep = app.sim.timeStep = ts; }
 
+    void stepSim(int n) {
+        app.setSimRunning(false);
+        for (int i = 0; i < n; i++)
+            app.sim.stepDeterministic();
+    }
+
+    JsArrayNumber getNodeVoltageList() {
+        JsArrayNumber arr = getJSArrayNumber();
+        if (app.sim != null && app.sim.matrices != null && app.sim.matrices.length > 0) {
+            CircuitMatrix m = app.sim.matrices[0];
+            for (int i = 0; i < m.nodeCount; i++)
+                arr.push(m.nodeVoltages[i]);
+        }
+        return arr;
+    }
+
     // Premium UI extensions
     void reset() { app.resetAction(); }
     void setSpeed(double pct) {
@@ -325,6 +341,8 @@ public class JSInterface {
 	    setTimeStep: $entry(function(ts) { that.@com.lushprojects.circuitjs1.client.JSInterface::setTimeStep(D)(ts); } ), // don't use this, see #843
 	    getMaxTimeStep: $entry(function() { return that.@com.lushprojects.circuitjs1.client.JSInterface::getMaxTimeStep()(); } ),
 	    setMaxTimeStep: $entry(function(ts) { that.@com.lushprojects.circuitjs1.client.JSInterface::setMaxTimeStep(D)(ts); } ),
+	    stepSim: $entry(function(n) { that.@com.lushprojects.circuitjs1.client.JSInterface::stepSim(I)(n); } ),
+	    getNodeVoltageList: $entry(function() { return that.@com.lushprojects.circuitjs1.client.JSInterface::getNodeVoltageList()(); } ),
 	    isRunning: $entry(function() { return that.@com.lushprojects.circuitjs1.client.JSInterface::simIsRunning()(); } ),
 	    getNodeVoltage: $entry(function(n) { return that.@com.lushprojects.circuitjs1.client.JSInterface::getLabeledNodeVoltage(Ljava/lang/String;)(n); } ),
 	    setExtVoltage: $entry(function(n, v) { that.@com.lushprojects.circuitjs1.client.JSInterface::setExtVoltage(Ljava/lang/String;D)(n, v); } ),
