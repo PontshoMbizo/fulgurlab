@@ -31,9 +31,17 @@ interface Viewport {
 interface Props {
     activeTool: PaletteItem | null;
     onPlaced?: () => void;
+    // Probe tool (Scopes button): while true, clicking an element toggles a
+    // scope channel on it instead of selecting/moving it.
+    probeMode?: boolean;
+    // Fired after a double-click lands on an element (only outside
+    // activeTool/probeMode -- see handleDoubleClick below); the element
+    // itself is already selected by the time this fires, so the callback
+    // just needs to open whatever UI shows the selected element.
+    onElementDoubleClick?: () => void;
 }
 
-export default function CircuitCanvas({ activeTool, onPlaced }: Props) {
+export default function CircuitCanvas({ activeTool, onPlaced, probeMode = false, onElementDoubleClick }: Props) {
     useSyncExternalStore(engineStore.subscribe, engineStore.getVersion, engineStore.getVersion);
     const svgRef = useRef<SVGSVGElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -240,19 +248,36 @@ export default function CircuitCanvas({ activeTool, onPlaced }: Props) {
         const p = toWorldPoint(e);
         if (activeTool) {
             startPlace(p, activeTool);
+        } else if (probeMode) {
+            const elm = pickElement(p);
+            if (elm) engineStore.toggleScopeChannel(elm);
         } else {
             const elm = pickElement(p);
             engineStore.select(elm);
             if (elm) startMove(elm, p);
         }
-    }, [activeTool, toWorldPoint, pickElement, spacePressed, startPan, startPlace, startMove]);
+    }, [activeTool, probeMode, toWorldPoint, pickElement, spacePressed, startPan, startPlace, startMove]);
+
+    // Double-click opens the modal edit dialog -- only in the plain select/
+    // move mode, not while placing a new element or probing (in probe mode,
+    // the two mousedowns of a double-click would just toggle a channel on
+    // then immediately back off; opening a modal on top of that would be
+    // confusing rather than useful).
+    const handleDoubleClick = useCallback((e: ReactMouseEvent) => {
+        if (activeTool || probeMode) return;
+        const elm = pickElement(toWorldPoint(e));
+        if (elm) {
+            engineStore.select(elm);
+            onElementDoubleClick?.();
+        }
+    }, [activeTool, probeMode, toWorldPoint, pickElement, onElementDoubleClick]);
 
     // Hover preview only, while nothing is being dragged -- real drag
     // tracking lives in the window-level listeners started above.
     const handleMouseMove = useCallback((e: ReactMouseEvent) => {
         if (activeTool || moveState.current || panState.current) return;
         setHovered(pickElement(toWorldPoint(e)));
-    }, [activeTool, toWorldPoint, pickElement]);
+    }, [activeTool, pickElement, toWorldPoint]);
 
     useEffect(() => {
         const isTypingTarget = () => {
@@ -303,7 +328,7 @@ export default function CircuitCanvas({ activeTool, onPlaced }: Props) {
 
     const selected = engineStore.selected;
     const worldTransform = `translate(${viewport.x} ${viewport.y}) scale(${viewport.scale})`;
-    const cursor = activeTool ? "crosshair" : isPanning ? "grabbing" : spacePressed ? "grab" : "default";
+    const cursor = activeTool ? "crosshair" : probeMode ? "pointer" : isPanning ? "grabbing" : spacePressed ? "grab" : "default";
 
     // Drag-and-drop a circuit .txt file onto the canvas as an alternative to
     // UndoRedoCluster's file-picker button -- both funnel through
@@ -359,24 +384,44 @@ export default function CircuitCanvas({ activeTool, onPlaced }: Props) {
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseLeave={() => setHovered(null)}
+                onDoubleClick={handleDoubleClick}
                 onContextMenu={(e) => e.preventDefault()}
             >
                 <g transform={worldTransform}>
-                    {engineStore.engine.elmList.map((elm, i) => (
-                        <ElementSymbol
-                            key={i}
-                            elm={elm}
-                            selected={elm === selected}
-                            hovered={elm === hovered}
-                            onMouseDown={(e) => {
-                                if (activeTool) return;
-                                e.stopPropagation();
-                                const p = toWorldPoint(e);
-                                engineStore.select(elm);
-                                startMove(elm, p);
-                            }}
-                        />
-                    ))}
+                    {engineStore.engine.elmList.map((elm, i) => {
+                        const scopeChannel = engineStore.isProbed(elm);
+                        return (
+                            <g key={i}>
+                                <ElementSymbol
+                                    elm={elm}
+                                    selected={elm === selected}
+                                    hovered={elm === hovered}
+                                    onMouseDown={(e) => {
+                                        if (activeTool) return;
+                                        e.stopPropagation();
+                                        if (probeMode) {
+                                            engineStore.toggleScopeChannel(elm);
+                                            return;
+                                        }
+                                        const p = toWorldPoint(e);
+                                        engineStore.select(elm);
+                                        startMove(elm, p);
+                                    }}
+                                />
+                                {scopeChannel && (
+                                    <circle
+                                        cx={(elm.point1.x + elm.point2.x) / 2}
+                                        cy={(elm.point1.y + elm.point2.y) / 2}
+                                        r={5 / viewport.scale}
+                                        fill={scopeChannel.color}
+                                        stroke={BACKGROUND}
+                                        strokeWidth={1.5 / viewport.scale}
+                                        pointerEvents="none"
+                                    />
+                                )}
+                            </g>
+                        );
+                    })}
 
                     {dragStart.current && dragCurrent && (
                         <line

@@ -12,15 +12,17 @@ const WIRE_TOOL = PALETTE.find((p) => p.dumpType === "w")!;
 interface Props {
     activeTool: PaletteItem | null;
     onSelect: (item: PaletteItem | null) => void;
+    probeActive: boolean;
+    onToggleProbe: () => void;
 }
 
 // Top-left floating pill, transcribed from the reference mockup: Draw /
 // Scopes / Edit-select / More-tools, one glass pill, circular icon buttons.
-// "Scopes" has no fulgurlab feature behind it yet (Phase 6 in the plan), so
-// it's kept visible but disabled rather than dropped, to preserve the
-// mockup's exact button set -- it'll come alive once scopes exist instead
-// of needing the toolbar rebuilt.
-export default function FloatingToolbar({ activeTool, onSelect }: Props) {
+// "Scopes" now toggles the real probe tool (click a wire/element on the
+// canvas to add it as a MATLAB-style scope channel) -- kept in the exact
+// same button slot the mockup reserved for it, so no new UI had to be
+// invented for this piece.
+export default function FloatingToolbar({ activeTool, onSelect, probeActive, onToggleProbe }: Props) {
     const [flyoutOpen, setFlyoutOpen] = useState(false);
     const rootRef = useRef<HTMLDivElement>(null);
 
@@ -34,7 +36,7 @@ export default function FloatingToolbar({ activeTool, onSelect }: Props) {
     }, [flyoutOpen]);
 
     const isWire = activeTool === WIRE_TOOL;
-    const isSelect = activeTool === null;
+    const isSelect = activeTool === null && !probeActive;
     const isOther = activeTool !== null && !isWire;
 
     return (
@@ -52,7 +54,13 @@ export default function FloatingToolbar({ activeTool, onSelect }: Props) {
                 >
                     <PencilIcon />
                 </IconButton>
-                <IconButton title="Scopes (coming soon)" disabled>
+                <IconButton
+                    title="Scopes: click an element to watch its voltage"
+                    active={probeActive}
+                    activeBg="rgba(56,189,248,.2)"
+                    activeColor="#38bdf8"
+                    onClick={() => { onToggleProbe(); setFlyoutOpen(false); }}
+                >
                     <WaveformIcon />
                 </IconButton>
                 <IconButton

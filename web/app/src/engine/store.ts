@@ -8,6 +8,32 @@ import { CircuitEngine, CircuitElm, CircuitParser } from "@fulgurlab/engine";
 // than an oversight).
 const MAX_UNDO_STEPS = 100;
 
+// Rolling window per scope channel -- a real oscilloscope/DAQ trace, not an
+// unbounded log. 2000 samples is generous for a "last few seconds" MATLAB-
+// style rolling plot without the array ever growing unbounded during a long
+// run. push()+shift() is O(n) per sample, but n is small and stepsPerFrame
+// tops out at 40 (SpeedSlider's own MAX_STEPS) -- comfortably cheap per
+// 16ms frame; revisit with a true circular buffer only if profiling ever
+// shows this hot.
+const MAX_SCOPE_SAMPLES = 2000;
+
+// MATLAB's default axes color order, loosely -- picked to stay visually
+// distinct from this app's OWN semantic colors (theme.ts's SELECT_COLOR
+// cyan-400, HOVER_COLOR violet-400, GROUND_COLOR green-600) so a scope trace
+// is never confusable with a selection/hover highlight on the canvas itself.
+const SCOPE_COLORS = ["#38bdf8", "#fb923c", "#facc15", "#e879f9", "#34d399", "#f472b6", "#60a5fa", "#fca5a5"];
+
+export interface ScopeSample { t: number; value: number; }
+
+export interface ScopeChannel {
+    id: number;
+    elm: CircuitElm;
+    label: string;
+    color: string;
+    mode: "voltage" | "current";
+    history: ScopeSample[];
+}
+
 // Single engine instance owned outside React state (plan §3.2: "the React
 // app owns a single engine instance outside React state"). React components
 // subscribe via useSyncExternalStore against `version`, which bumps on every
@@ -24,6 +50,9 @@ class EngineStore {
     version = 0;
     status: RunStatus = { state: "idle" };
     selected: CircuitElm | null = null;
+    scopeChannels: ScopeChannel[] = [];
+    private nextScopeChannelId = 1;
+    private scopeChannelCounts: Record<string, number> = {};
 
     private listeners = new Set<() => void>();
     private rafHandle: number | null = null;
@@ -87,6 +116,14 @@ class EngineStore {
             this.status = { state: "error", message: e instanceof Error ? e.message : String(e) };
         }
         this.selected = null;
+        // CircuitParser rebuilds elmList from scratch -- every element is a
+        // BRAND NEW instance, so any existing scope channel's `elm` reference
+        // is now orphaned (it matches nothing in the live circuit anymore).
+        // There's no stable cross-reparse element identity to re-match
+        // against yet, so channels can't be preserved across undo/redo/
+        // import -- clearing them is more honest than leaving a frozen,
+        // silently-dead trace on screen.
+        this.scopeChannels = [];
         this.bump();
     }
 
@@ -172,6 +209,7 @@ class EngineStore {
         this.beginTransaction();
         this.engine.elmList = this.engine.elmList.filter(e => e !== elm);
         if (this.selected === elm) this.selected = null;
+        this.scopeChannels = this.scopeChannels.filter((c) => c.elm !== elm);
         this.reanalyze();
         this.endTransaction();
     }
@@ -195,6 +233,65 @@ class EngineStore {
         this.endTransaction();
     }
 
+    // Scope channels -- MATLAB-style probe: toggleScopeChannel() is what the
+    // canvas's probe-tool click calls (add if not already probed, remove if
+    // it is). Deliberately NOT wrapped in begin/endTransaction: watching a
+    // signal is a viewing concern, not a circuit edit, so it isn't part of
+    // undo/redo history at all (consistent with how `selected` also isn't).
+    isProbed(elm: CircuitElm): ScopeChannel | undefined {
+        return this.scopeChannels.find((c) => c.elm === elm);
+    }
+
+    addScopeChannel(elm: CircuitElm, mode: ScopeChannel["mode"] = "voltage") {
+        const dumpType = String(elm.getDumpType());
+        const n = (this.scopeChannelCounts[dumpType] ?? 0) + 1;
+        this.scopeChannelCounts[dumpType] = n;
+        const channel: ScopeChannel = {
+            id: this.nextScopeChannelId++,
+            elm,
+            mode,
+            label: `${dumpType} #${n}`,
+            color: SCOPE_COLORS[(this.scopeChannels.length) % SCOPE_COLORS.length],
+            history: [],
+        };
+        this.scopeChannels = [...this.scopeChannels, channel];
+        this.bump();
+    }
+
+    removeScopeChannel(id: number) {
+        this.scopeChannels = this.scopeChannels.filter((c) => c.id !== id);
+        this.bump();
+    }
+
+    toggleScopeChannel(elm: CircuitElm) {
+        const existing = this.isProbed(elm);
+        if (existing) this.removeScopeChannel(existing.id);
+        else this.addScopeChannel(elm);
+    }
+
+    clearScopeChannels() {
+        this.scopeChannels = [];
+        this.bump();
+    }
+
+    // Called once per completed simulation step (see stepOnceSafe()) --
+    // covers both the continuous run() loop and single-step step(), with no
+    // duplicated sampling logic between them.
+    private recordScopeSamples() {
+        if (this.scopeChannels.length === 0) return;
+        const t = this.engine.t;
+        for (const ch of this.scopeChannels) {
+            let value: number;
+            try {
+                value = ch.mode === "current" ? ch.elm.current : ch.elm.getVoltageDiff();
+            } catch {
+                value = 0;
+            }
+            ch.history.push({ t, value });
+            if (ch.history.length > MAX_SCOPE_SAMPLES) ch.history.shift();
+        }
+    }
+
     // Drag-to-move: called on every pointer move while dragging a placed
     // element (CircuitCanvas does the delta math and passes absolute
     // coordinates). Mutates the same raw x/y/x2/y2 fields the constructor
@@ -214,6 +311,7 @@ class EngineStore {
         this.beginTransaction();
         this.engine.clear();
         this.selected = null;
+        this.scopeChannels = [];
         this.status = { state: "idle" };
         this.bump();
         this.endTransaction();
@@ -227,6 +325,7 @@ class EngineStore {
     stepOnceSafe(): boolean {
         try {
             this.engine.stepOnce();
+            this.recordScopeSamples();
             return true;
         } catch (e) {
             this.status = { state: "error", message: e instanceof Error ? e.message : String(e) };
@@ -278,6 +377,10 @@ class EngineStore {
         this.stop();
         this.engine.t = 0;
         this.engine.timeStepAccum = 0;
+        // Same circuit, same probed elements -- but old samples were taken
+        // at times that no longer make sense once t rewinds to 0, so the
+        // scope's history (not its channel list) resets alongside the sim.
+        for (const ch of this.scopeChannels) ch.history = [];
         this.reanalyze();
     }
 }

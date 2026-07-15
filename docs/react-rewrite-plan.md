@@ -1141,6 +1141,100 @@ scratch-file pattern (can't delete files in this sandbox). `next dev
 --turbopack` + curl smoke-tested after each of the five pieces landed: HTTP
 200, no error/warn lines, every time.
 
+### 2026-07-15 session note, continued a third time — MATLAB-style scope + double-click edit dialog
+
+Pontsho asked to "work on the scope, and assigning values to components;
+follow the way matlab does their scope." Clarified three genuinely open
+design questions up front rather than guessing: how a channel gets added
+(probe tool, matching the already-stubbed-disabled "Scopes" toolbar
+button), where the scope window lives (a floating, user-draggable/resizable
+panel, like an actual MATLAB figure window, not a fixed corner pill), and
+what "assigning values" should add given the Inspector sidebar already
+existed (a double-click modal dialog, in addition to it). All three came
+back as the recommended option.
+
+**Scope data model (`EngineStore`).** `ScopeChannel {id, elm, label, color,
+mode: "voltage"|"current", history: {t, value}[]}`, a bounded 2000-sample
+rolling window per channel (a real oscilloscope sweep, not an unbounded
+log). Sampling hooks into `stepOnceSafe()` — the one place both the
+continuous `run()` loop and single-`step()` already funnel through — so
+there's exactly one sampling call site regardless of how a step happened.
+`toggleScopeChannel()` (add if not watched, remove if it is) is what the
+probe tool's click calls; deliberately NOT wrapped in an undo transaction,
+since watching a signal is a viewing concern, not a circuit edit (same
+reasoning as `selected` also being outside undo history). One real
+correctness issue worked through up front, not discovered later: `undo()`/
+`redo()`/`importText()` all go through `loadSnapshot()`, which reparses dump
+text and reconstructs **brand-new element instances** — any existing scope
+channel's `elm` reference would otherwise silently point at an object no
+longer in the live circuit, freezing that trace with no visible indication
+anything had gone wrong. Rather than build a stable cross-reparse element
+identity system (a bigger feature on its own), `loadSnapshot()` just clears
+`scopeChannels` outright — more honest than a silently-dead trace, and
+`removeElement()`/`clear()` do the same for their own cases (deleted
+element, whole-circuit clear). `resetTime()` clears each channel's
+*history* but keeps the channel itself, since the same signal is still
+worth watching, just with samples whose timestamps no longer make sense
+once `t` rewinds to 0.
+
+**Canvas-rendered plot (`scope/draw.ts` + `scope/Scope.tsx`).** MATLAB-ish
+axes: dark plot background distinct from the app's own canvas background,
+an 8×6 gridline mesh, numeric tick labels on both axes (auto-formatted --
+µs/ms/s depending on magnitude, exponential notation for very small/large
+values), rotated Y-axis title, and per-channel color-coded traces with a
+legend (color swatch + label + live latest value + a remove button) drawn
+as HTML, not canvas, specifically so the remove button can be a real
+clickable element. Colors come from a fixed palette chosen to stay visually
+distinct from this app's own semantic colors (cyan=select, violet=hover,
+green=ground) so a scope trace can never be confused for a selection
+highlight on the circuit itself. The window is genuinely user-positioned/
+resized (unlike every other chrome panel, which are fixed pills matching
+the reference mockup exactly) via the same window-level-listener drag
+pattern established for CircuitCanvas's own gestures. One perf bug caught
+before shipping: the first draft re-ran `canvas.width = ...` on every
+single store-version bump (i.e. every rAF frame while the sim runs) --
+assigning a canvas's width/height property, even to the same value, clears
+the entire bitmap and resets the 2D context's transform/clip stack, so
+doing that 60 times a second is a full reallocation, not a repaint. Split
+into two effects: one that resizes the backing bitmap only when the panel's
+CSS size actually changes, and one that redraws (a cheap clearRect + repaint
+via `drawScopeCanvas`'s own internal, verified-balanced `save()`/`restore()`
+pairs) on every version bump. **Known limitation, not an oversight:** all
+channels share one numeric Y-axis regardless of mode -- mixing voltage and
+current channels puts them on the same scale, which can look odd if their
+magnitudes differ a lot; a real dual axis (MATLAB's `yyaxis`) is a bigger
+feature for later.
+
+**Probe tool + double-click modal.** The "Scopes" toolbar button (kept in
+the exact slot the reference mockup reserved for it, previously disabled
+with a "coming soon" title) now toggles probe mode, mutually exclusive with
+element placement. In probe mode, clicking an element (through the same
+distance-based `pickElement()` used for move, plus a direct hit on the
+`ElementSymbol` itself) toggles its scope channel instead of
+selecting/moving it; probed elements get a small colored ring at their
+midpoint, in their channel's own color, so it's visible on the circuit
+which signals are being watched. Double-click (only outside placement/probe
+mode) opens `ElementEditModal.tsx` -- a centered glass-card overlay built
+from the *same* `FIELD_SCHEMA`/`EditableField` the sidebar Inspector already
+uses, not a second field-rendering implementation, plus a Delete button and
+Escape/backdrop-click to close.
+
+**Verification.** `web/engine`: unaffected by this piece, re-run anyway --
+`tsc` clean, `vitest run` 55/55. `web/app`: `tsc`/`eslint` clean. A new
+headless bundle-and-run script (`_verify_scope.ts`, same esbuild+node
+pattern as prior sessions) exercises the full scope-channel lifecycle:
+add/remove/toggle, distinct auto-assigned colors, that a sample's recorded
+value matches the element's real `getVoltageDiff()` at record time, and
+that `removeElement()`/`clear()`/`resetTime()`/`importText()` each affect
+channels exactly as designed -- 21 checks, all green. The canvas *rendering*
+itself (`draw.ts`) couldn't be verified the same way (no real
+browser/canvas polyfill in this sandbox, and it isn't SVG so the earlier
+rasterize-and-view harness doesn't apply either); instead it got a careful
+manual trace of the save/restore stack balance (confirmed net-zero on both
+the has-data and no-data code paths) and the axis math (confirmed the tick
+labels and trace's `xOf`/`yOf` mapping agree on which direction is "up").
+Worth Pontsho eyeballing the actual plot rendering once run locally.
+
 ---
 
 ## Appendix A — Tables
