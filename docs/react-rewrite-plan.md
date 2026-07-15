@@ -837,6 +837,101 @@ thing to click around in this repo -- worth Pontsho trying it locally
 
 ---
 
+### 2026-07-15 session note — scope.io-style colors + real SVG symbols
+
+Pontsho: "for the style, use the style in scope.io's circuitjs iframe. next,
+use the component (svg or equivalent) for the components in fulgurlab." Two
+asks, both landed: match Falstad's actual palette, and replace the crude
+Canvas2D body shapes from the previous session's note with real vector
+symbols. Didn't web-search scope.io's embed — went straight to the Java
+oracle, since scope.io just iframes stock CircuitJS1 with default settings,
+and the defaults are already sitting in the source tree.
+
+**Color scheme (`web/app/src/canvas/theme.ts`, new file).** Extracted from
+`CircuitElm.java`/`Color.java`/`UIManager.java` rather than guessed: background
+`#111`; `positiveColor`/`negativeColor`/`neutralColor` = green/red/gray with
+`voltageRange = 5` (±5V is full saturation, not the ±20V the previous
+session's `draw.ts` used); `selectColor` = cyan; `currentColor` = yellow;
+blending is a plain linear RGB mix (`Color.java`'s 3-arg constructor:
+`r = c1.r*(1-mix) + c2.r*mix`), not HSB. `strokeFor(volts, selected, hovered)`
+layers selected (cyan) and hovered (a lavender not in Falstad — this port's
+own affordance, since Falstad has no mouse-hover state) over the voltage
+gradient. Verified end-to-end (see below), not just unit-level: a resistor at
+-5V/0V/+5V in each of the three interaction states renders full-red/gray/
+full-green with cyan or lavender correctly overriding when selected/hovered.
+
+**SVG symbol library (`web/app/src/canvas/symbols.tsx`, new file,
+~370 lines).** Every element renders as a `<g transform="translate(x y)
+rotate(deg)">` wrapping locally-authored (horizontal, point1 at origin)
+path/line/shape data — mirroring Falstad's own Graphics.translate()+rotate()-
+then-draw-in-local-space convention, rather than the world-space `dpx1/dpy1`
+perpendicular-offset math the previous session's `draw.ts` used. Geometry
+constants (zigzag peaks, plate gaps, arc radii, lead lengths) came from a
+sub-agent's read of the Java `draw()` methods, cross-checked against this
+engine's own `setPoints()` implementations where they overlap (e.g.
+`GateElm.setPoints()`'s input-fanout loop is replicated *exactly*, same `i0`
+sequence, in `gateInputOffsets()` — so drawn input leads land precisely on
+`getPost(i)`, not just approximately near it).
+
+Every Tier-1 dump type has a real symbol now: resistor zigzag, capacitor
+plates, inductor coil arcs, diode/LED/zener triangle+bar (color-coded
+cathode), battery/rail/clock bars, switch lever, ground hash marks, pot
+(resistor body + world-space wiper leg to the real `getPost(2)`), opamp
+triangle with +/- labels, transistor circle+leads, IEC-style gate rectangles
+(`&`/`≥1`/`=1`/inversion bubble for NAND/NOR/XNOR/inverter — chose one
+consistent convention rather than mixing ANSI curved AND-shapes with IEC OR
+labels), current source (circle+arrow, its own symbol, not a re-skinned
+battery), probe/ammeter (inline circled V/A meter), labeled node (label text
+set *above* the post marker, not crammed inside a 9px circle), text and box
+graphics. Known, accepted simplifications: Falstad's `dsign` world-orientation
+mirror isn't replicated (a component may not visually flip the same way Java
+would when placed right-to-left); MOSFET reuses the BJT circle+leads symbol
+rather than its own gate/channel glyph.
+
+`CircuitCanvas.tsx` was rewritten around this: an `<svg>` root (dot-grid via
+an SVG `<pattern>`, not a per-pixel fill loop) mapping `engineStore.engine
+.elmList` to `<ElementSymbol>` per element, keeping the exact same
+mouse-driven place/select/delete logic and `distanceToElement` hit-testing
+from the previous session unchanged. `draw.ts` is trimmed to just `GRID_SIZE`/
+`snap`/`distanceToElement` — the Canvas2D `DRAWERS` table and per-shape draw
+functions are gone, superseded by `symbols.tsx`.
+
+**Verification method (new this session, worth reusing).** Interactive
+browser testing is still not possible from this sandbox (unchanged from the
+last note), but static analysis plus a dev-server curl isn't a strong enough
+check for *visual* correctness — so this session added a headless
+render-and-rasterize harness instead of relying on code review alone: an
+esbuild-bundled script (`react-dom/server`'s `renderToStaticMarkup`)
+constructs one real instance of every Tier-1 dump type via the actual
+`createElement()` factory, calls `elm.preStamp()` (matching what
+`engineStore.addElement()` does — `setPoints()` doesn't run in the
+constructor, only `preStamp()`, so skipping it renders everything collapsed
+at the origin), renders each through the real `ElementSymbol`, and rasterizes
+the combined SVG to PNG via `sharp` for actual eyeballing. Caught two real
+bugs this way that code review missed: the current source was reusing the
+battery symbol (fixed — dedicated circle+arrow `CurrentSourceBody`), and
+`LabeledNodeElm`'s free-text label overflowed its marker circle (fixed —
+moved above the marker in `LabeledNodeBody`). All 33 Tier-1 dump types render
+without throwing; spot-checked ground's hash marks, the NAND bubble, and the
+full selected/hovered/voltage color matrix by cropping and viewing the
+raster directly. This harness only exists as ad hoc scratch files during
+verification (`web/app/src/canvas/_verify_symbols.tsx` /
+`_verify_bundle.cjs`) — this sandbox can't delete files in mounted folders,
+so they're left neutered (`export {};` / empty) rather than gone; recreate
+from this note's description if the check needs to be repeated rather than
+resurrecting the emptied files.
+
+**Sandbox finding worth flagging**: `next dev` (plain webpack) hung
+indefinitely again this session past 40+ seconds — previously this was only
+seen with `next build`. `next dev --turbopack` came up in ~1s and served the
+page in ~3s total, no code changes involved, so this looks like a
+sandbox/webpack-cold-compile speed issue rather than anything wrong with the
+app. Worth defaulting to `--turbopack` for any future in-sandbox dev-server
+checks here; plain `next build` (webpack, no turbopack flag for production
+builds pre-Next-16) is still unverified in this sandbox per the last note.
+
+---
+
 ## Appendix A — Tables
 
 ### A.1 Tier 1 (port in this order; Java file names in `client/`)

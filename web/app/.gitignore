@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# ad hoc render-and-rasterize verification scratch files (see
+# docs/react-rewrite-plan.md's 2026-07-15 session note) -- recreated and
+# discarded per-check, never meant to be committed
+src/canvas/_verify_symbols.tsx
+src/canvas/_verify_bundle.cjs

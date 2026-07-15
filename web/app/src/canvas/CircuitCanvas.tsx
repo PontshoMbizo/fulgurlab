@@ -1,10 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import type { MouseEvent as ReactMouseEvent } from "react";
 import { createElement, CircuitElm } from "@fulgurlab/engine";
 import { engineStore } from "@/engine/store";
 import type { PaletteItem } from "@/palette/palette";
-import { GRID_SIZE, snap, drawElement, distanceToElement } from "./draw";
+import { GRID_SIZE, snap, distanceToElement } from "./draw";
+import { ElementSymbol } from "./symbols";
+import { BACKGROUND, GRID_DOT, SELECT_COLOR } from "./theme";
 
 const HIT_THRESHOLD = 8;
 const DEFAULT_SPAN = GRID_SIZE * 3;
@@ -14,16 +17,23 @@ interface Props {
     onPlaced?: () => void;
 }
 
+// SVG-based renderer: each element is a real <g> (see symbols.tsx) instead
+// of an imperative Canvas2D draw call, so components render as proper
+// vector symbols (schematic shapes, not the earlier crude approximations)
+// and stay crisp at any zoom/DPI. The engine itself still owns all state;
+// this component just re-renders the whole elmList from engineStore on
+// every version bump (plan Sec 3.2's "canvas reads engine state directly"
+// principle, adapted from an imperative rAF loop to a declarative SVG tree).
 export default function CircuitCanvas({ activeTool, onPlaced }: Props) {
     useSyncExternalStore(engineStore.subscribe, engineStore.getVersion, engineStore.getVersion);
-    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const svgRef = useRef<SVGSVGElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const dragStart = useRef<{ x: number; y: number } | null>(null);
     const [dragCurrent, setDragCurrent] = useState<{ x: number; y: number } | null>(null);
     const [hovered, setHovered] = useState<CircuitElm | null>(null);
     const [size, setSize] = useState({ w: 800, h: 600 });
 
-    // Size the canvas to its container.
+    // Size the SVG viewport to its container.
     useEffect(() => {
         const el = containerRef.current;
         if (!el) return;
@@ -35,57 +45,8 @@ export default function CircuitCanvas({ activeTool, onPlaced }: Props) {
         return () => ro.disconnect();
     }, []);
 
-    // Continuous draw loop -- reads engine.elmList directly every frame
-    // rather than going through React per element (plan §3.2: canvas reads
-    // engine state directly in its own rAF loop).
-    useEffect(() => {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-        let raf = 0;
-
-        const frame = () => {
-            const dpr = window.devicePixelRatio || 1;
-            if (canvas.width !== size.w * dpr || canvas.height !== size.h * dpr) {
-                canvas.width = size.w * dpr;
-                canvas.height = size.h * dpr;
-            }
-            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-            ctx.fillStyle = "#0a0a0a";
-            ctx.fillRect(0, 0, size.w, size.h);
-
-            ctx.fillStyle = "#1f1f1f";
-            for (let x = 0; x < size.w; x += GRID_SIZE) {
-                for (let y = 0; y < size.h; y += GRID_SIZE) {
-                    ctx.fillRect(x, y, 1, 1);
-                }
-            }
-
-            const selected = engineStore.selected;
-            for (const elm of engineStore.engine.elmList) {
-                drawElement(ctx, elm, elm === selected, elm === hovered);
-            }
-
-            if (dragStart.current && dragCurrent) {
-                ctx.strokeStyle = "#22d3ee";
-                ctx.lineWidth = 1.5;
-                ctx.setLineDash([4, 4]);
-                ctx.beginPath();
-                ctx.moveTo(dragStart.current.x, dragStart.current.y);
-                ctx.lineTo(dragCurrent.x, dragCurrent.y);
-                ctx.stroke();
-                ctx.setLineDash([]);
-            }
-
-            raf = requestAnimationFrame(frame);
-        };
-        raf = requestAnimationFrame(frame);
-        return () => cancelAnimationFrame(raf);
-    }, [size, hovered, dragCurrent]);
-
-    const toCanvasPoint = useCallback((e: React.MouseEvent) => {
-        const rect = canvasRef.current!.getBoundingClientRect();
+    const toCanvasPoint = useCallback((e: ReactMouseEvent) => {
+        const rect = svgRef.current!.getBoundingClientRect();
         return { x: snap(e.clientX - rect.left), y: snap(e.clientY - rect.top) };
     }, []);
 
@@ -102,45 +63,39 @@ export default function CircuitCanvas({ activeTool, onPlaced }: Props) {
         }
     }, []);
 
-    const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    const pickElement = useCallback((p: { x: number; y: number }): CircuitElm | null => {
+        let best: CircuitElm | null = null;
+        let bestDist = HIT_THRESHOLD;
+        for (const elm of engineStore.engine.elmList) {
+            const dist = distanceToElement(elm, p.x, p.y);
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = elm;
+            }
+        }
+        return best;
+    }, []);
+
+    const handleMouseDown = useCallback((e: ReactMouseEvent) => {
         const p = toCanvasPoint(e);
         if (activeTool) {
             dragStart.current = p;
             setDragCurrent(p);
         } else {
-            // select mode: pick the closest element under the cursor, if any.
-            let best: CircuitElm | null = null;
-            let bestDist = HIT_THRESHOLD;
-            for (const elm of engineStore.engine.elmList) {
-                const dist = distanceToElement(elm, p.x, p.y);
-                if (dist < bestDist) {
-                    bestDist = dist;
-                    best = elm;
-                }
-            }
-            engineStore.select(best);
+            engineStore.select(pickElement(p));
         }
-    }, [activeTool, toCanvasPoint]);
+    }, [activeTool, toCanvasPoint, pickElement]);
 
-    const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    const handleMouseMove = useCallback((e: ReactMouseEvent) => {
         const p = toCanvasPoint(e);
         if (activeTool && dragStart.current) {
             setDragCurrent(p);
         } else if (!activeTool) {
-            let best: CircuitElm | null = null;
-            let bestDist = HIT_THRESHOLD;
-            for (const elm of engineStore.engine.elmList) {
-                const dist = distanceToElement(elm, p.x, p.y);
-                if (dist < bestDist) {
-                    bestDist = dist;
-                    best = elm;
-                }
-            }
-            setHovered(best);
+            setHovered(pickElement(p));
         }
-    }, [activeTool, toCanvasPoint]);
+    }, [activeTool, toCanvasPoint, pickElement]);
 
-    const handleMouseUp = useCallback((e: React.MouseEvent) => {
+    const handleMouseUp = useCallback((e: ReactMouseEvent) => {
         if (activeTool && dragStart.current) {
             const end = toCanvasPoint(e);
             finalizePlacement(dragStart.current, end, activeTool);
@@ -167,16 +122,49 @@ export default function CircuitCanvas({ activeTool, onPlaced }: Props) {
         return () => window.removeEventListener("keydown", onKeyDown);
     }, []);
 
+    const selected = engineStore.selected;
+
     return (
         <div ref={containerRef} className="w-full h-full relative">
-            <canvas
-                ref={canvasRef}
-                style={{ width: size.w, height: size.h, cursor: activeTool ? "crosshair" : "default" }}
+            <svg
+                ref={svgRef}
+                width={size.w}
+                height={size.h}
+                style={{ background: BACKGROUND, cursor: activeTool ? "crosshair" : "default", display: "block" }}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
-                onMouseLeave={() => { setHovered(null); }}
-            />
+                onMouseLeave={() => setHovered(null)}
+            >
+                <defs>
+                    <pattern id="grid-dots" width={GRID_SIZE} height={GRID_SIZE} patternUnits="userSpaceOnUse">
+                        <circle cx={1} cy={1} r={1} fill={GRID_DOT} />
+                    </pattern>
+                </defs>
+                <rect x={0} y={0} width={size.w} height={size.h} fill="url(#grid-dots)" />
+
+                {engineStore.engine.elmList.map((elm, i) => (
+                    <ElementSymbol
+                        key={i}
+                        elm={elm}
+                        selected={elm === selected}
+                        hovered={elm === hovered}
+                        onMouseDown={(e) => {
+                            if (activeTool) return;
+                            e.stopPropagation();
+                            engineStore.select(elm);
+                        }}
+                    />
+                ))}
+
+                {dragStart.current && dragCurrent && (
+                    <line
+                        x1={dragStart.current.x} y1={dragStart.current.y}
+                        x2={dragCurrent.x} y2={dragCurrent.y}
+                        stroke={SELECT_COLOR} strokeWidth={1.5} strokeDasharray="4 4"
+                    />
+                )}
+            </svg>
         </div>
     );
 }
