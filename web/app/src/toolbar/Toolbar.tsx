@@ -1,5 +1,11 @@
 "use client";
 
+// SUPERSEDED (2026-07-15): the fixed top bar this component built is
+// replaced by the floating chrome in src/chrome/ (FloatingToolbar,
+// StatusCluster, SpeedSlider), matching Pontsho's reference mockup style.
+// Not imported anywhere anymore; kept rather than deleted only because this
+// sandbox can't remove files from mounted folders -- see
+// docs/react-rewrite-plan.md's 2026-07-15 session note.
 import { useSyncExternalStore } from "react";
 import { engineStore } from "@/engine/store";
 

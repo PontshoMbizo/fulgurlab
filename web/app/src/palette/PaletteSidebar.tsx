@@ -1,5 +1,12 @@
 "use client";
 
+// SUPERSEDED (2026-07-15): the always-visible sidebar this component built
+// is replaced by src/chrome/PaletteFlyout.tsx, opened from the floating
+// toolbar's "More tools" button, matching Pontsho's reference mockup style
+// (which has no persistent palette panel). Not imported anywhere anymore;
+// kept rather than deleted only because this sandbox can't remove files
+// from mounted folders -- see docs/react-rewrite-plan.md's 2026-07-15
+// session note.
 import { CATEGORIES, PALETTE, PaletteItem } from "./palette";
 
 interface Props {

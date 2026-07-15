@@ -932,6 +932,102 @@ builds pre-Next-16) is still unverified in this sandbox per the last note.
 
 ---
 
+### 2026-07-15 session note, continued — chrome rebuilt to match a pixel-exact reference
+
+Pontsho uploaded a working mockup ("Simulator Premium.dc.html", a rendered
+component-preview export) and said "this is what i meant for the style,
+exactly this; without the grading icons and stuff." This superseded the
+previous note's color-scheme interpretation (which had been reasoned from
+the Java oracle's defaults, not this specific look) and, more substantially,
+called for rebuilding the whole app shell: full-bleed canvas with floating
+glassmorphic panels at the corners, not a bordered 3-column layout with a
+fixed top bar.
+
+**What changed, and why each call was made:**
+
+- **Fonts**: reintroduced Geist/Geist Mono (dropped two sessions ago over
+  the `next build` hang) via plain `<link>` tags in `layout.tsx` instead of
+  `next/font/google` — this is literally how the mockup itself loads them,
+  and fetches at browser runtime rather than Next's build pipeline, so it
+  can't reproduce that hang. `globals.css` now hardcodes the dark palette
+  (no more `prefers-color-scheme` light/dark branch — this app has exactly
+  one look) and actually wires `--font-sans` into `body` (the old file
+  defined the CSS var and then ignored it, using a hardcoded Arial stack).
+
+- **`theme.ts` recalibrated, not discarded.** The mockup's circuit uses a
+  flat, monochrome `currentColor: #4b5563` for every component at rest, with
+  green (`#16a34a`) reserved for ground — quite different from Falstad's
+  saturated rgb(128,128,128)-neutral scheme the last session ported. Rather
+  than pick one or the other, this keeps Falstad's actual mechanism (linear
+  RGB blend, ±5V full saturation, selected/hovered layered on top) but
+  retargets the three blend endpoints to this palette: neutral is now
+  `#4b5563` (exact mockup match at 0V), positive/negative are `#4ade80`/
+  `#f87171` (green-400/red-400, toned down from pure RGB primaries to fit
+  the muted register), select is `#22d3ee` (cyan-400), ground is a fixed
+  `#16a34a` never subject to the voltage gradient. Added `overlayColor()` so
+  any fixed-accent element (ground, and labeled-node's indigo) still yields
+  to selected/hovered like every voltage-gradient element does — previously
+  labeled-node's color was hardcoded and didn't respond to either. Canvas
+  background is now the mockup's exact layered CSS (`CANVAS_BACKGROUND_IMAGE`/
+  `_SIZE`: a 26px dot grid over a soft radial vignette, plus a separate inset
+  box-shadow vignette layer) rendered as plain divs behind the SVG rather
+  than the previous session's SVG `<pattern>` dot grid.
+
+- **New `src/chrome/` package**: `icons.tsx` (stroke icons transcribed from
+  the mockup's exact SVG path data), `IconButton.tsx` (shared ghost/outline
+  circular button covering the toolbar + reset/fullscreen buttons),
+  `FloatingToolbar.tsx` (top-left pill: Draw-wire / Scopes / Edit-select /
+  More-tools), `PaletteFlyout.tsx` (the categorized 31-item picker opened
+  from More-tools — the mockup doesn't show what's behind its chevron, so
+  this panel's specific layout is this port's own design, built to match
+  the same glass recipe), `StatusCluster.tsx` (top-right: time + running
+  LED, reset, the big run/stop toggle, fullscreen), `SpeedSlider.tsx`
+  (bottom-right: a custom drag-slider, not a native `<input type=range>`,
+  matching the mockup's exact track/thumb rendering — maps 0-100% onto
+  `engineStore.stepsPerFrame`'s existing 1-40 range).
+
+- **Deliberately dropped** (per "without the grading icons and stuff"): the
+  mockup's "Submit solution" button, "Reset to template" button, and its
+  "Res·F" resonant-frequency reading — all specific to a graded-assignment
+  context this app doesn't have. Kept "Reset simulation" (a real, general
+  sim-control concept) and added `EngineStore.resetTime()` for it: stops the
+  run loop, zeroes `engine.t`/`timeStepAccum`, re-stamps via `reanalyze()` --
+  same circuit, fresh state, unlike `clear()` which deletes every element.
+
+- **Inspector** (`src/inspector/Inspector.tsx`) rewritten as a floating
+  glass card, bottom-left, returning `null` entirely when nothing's
+  selected rather than showing a permanent empty-state sidebar — the
+  mockup has no inspector to transcribe, so this is this port's own design
+  choice, kept in the same glass language as everything else.
+
+- **`page.tsx`** is now just `<CircuitCanvas>` plus the four floating
+  components, absolutely positioned — no more flex column layout. The old
+  `Toolbar.tsx`/`PaletteSidebar.tsx` are superseded and unused; left in
+  place with a header comment explaining why (not deleted — this sandbox's
+  standing file-deletion restriction, same as every other superseded file
+  this project has hit).
+
+**Verification.** Same two methods as the previous note, re-run against the
+new code: the esbuild+react-dom/server+sharp headless-render harness (all
+33 Tier-1 dump types, now specifically checking a selected element, a
+hovered element, and ground, against the new palette) and a `next dev
+--turbopack` + curl smoke test of the *whole* assembled page (chrome +
+canvas together) confirming HTTP 200, no error markers, and every new
+control's title text present in the markup. Additionally attempted to
+download a real Chromium via `puppeteer browsers install chrome` this
+session specifically to get an actual pixel screenshot of the glass/blur
+chrome (CSS effects like `backdrop-filter` and layered gradients can't be
+verified via SVG rasterization the way circuit symbols can) — blocked with
+an HTTP 403 from this sandbox's network allowlist. So: the circuit-color
+changes are visually confirmed pixel-by-pixel; the chrome layer's *values*
+are confirmed correct by direct transcription against the mockup's source
+and a clean render with no runtime errors, but its actual blur/glassmorphism
+*appearance* has not been eyeballed from within this sandbox. Worth Pontsho
+checking `cd web/app && npm run dev -- --turbopack` locally before trusting
+the glass-panel look pixel-for-pixel.
+
+---
+
 ## Appendix A — Tables
 
 ### A.1 Tier 1 (port in this order; Java file names in `client/`)

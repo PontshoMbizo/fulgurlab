@@ -7,7 +7,7 @@ import { engineStore } from "@/engine/store";
 import type { PaletteItem } from "@/palette/palette";
 import { GRID_SIZE, snap, distanceToElement } from "./draw";
 import { ElementSymbol } from "./symbols";
-import { BACKGROUND, GRID_DOT, SELECT_COLOR } from "./theme";
+import { BACKGROUND, CANVAS_BACKGROUND_IMAGE, CANVAS_BACKGROUND_SIZE, CANVAS_VIGNETTE_SHADOW, SELECT_COLOR } from "./theme";
 
 const HIT_THRESHOLD = 8;
 const DEFAULT_SPAN = GRID_SIZE * 3;
@@ -125,24 +125,28 @@ export default function CircuitCanvas({ activeTool, onPlaced }: Props) {
     const selected = engineStore.selected;
 
     return (
-        <div ref={containerRef} className="w-full h-full relative">
+        <div ref={containerRef} className="w-full h-full relative" style={{ background: BACKGROUND }}>
+            {/* Backdrop: dot-grid + soft radial vignette, exactly mirroring the
+                reference mockup's own layered CSS background-image (not an SVG
+                pattern) -- kept as plain divs so the vignette's inset box-shadow
+                sits cleanly above it without fighting SVG stacking. */}
+            <div
+                className="absolute inset-0"
+                style={{ backgroundImage: CANVAS_BACKGROUND_IMAGE, backgroundSize: CANVAS_BACKGROUND_SIZE }}
+            />
+            <div className="absolute inset-0 pointer-events-none" style={{ boxShadow: CANVAS_VIGNETTE_SHADOW }} />
+
             <svg
                 ref={svgRef}
                 width={size.w}
                 height={size.h}
-                style={{ background: BACKGROUND, cursor: activeTool ? "crosshair" : "default", display: "block" }}
+                className="absolute inset-0"
+                style={{ cursor: activeTool ? "crosshair" : "default", display: "block" }}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
                 onMouseLeave={() => setHovered(null)}
             >
-                <defs>
-                    <pattern id="grid-dots" width={GRID_SIZE} height={GRID_SIZE} patternUnits="userSpaceOnUse">
-                        <circle cx={1} cy={1} r={1} fill={GRID_DOT} />
-                    </pattern>
-                </defs>
-                <rect x={0} y={0} width={size.w} height={size.h} fill="url(#grid-dots)" />
-
                 {engineStore.engine.elmList.map((elm, i) => (
                     <ElementSymbol
                         key={i}

@@ -116,6 +116,19 @@ class EngineStore {
         this.stepOnceSafe();
         this.bump();
     }
+
+    // "Reset simulation" (the floating status cluster's reset button) --
+    // rewinds time and re-stamps fresh matrices without touching the
+    // circuit's topology, unlike clear() which deletes every element. This
+    // matches Falstad's own Reset button: same circuit, t back to 0, any
+    // accumulated capacitor/inductor state reinitialized by the fresh
+    // analyzeAndStamp() (new zeroed lastNodeVoltages/nodeVoltages).
+    resetTime() {
+        this.stop();
+        this.engine.t = 0;
+        this.engine.timeStepAccum = 0;
+        this.reanalyze();
+    }
 }
 
 // One instance for the whole app (module singletons are per-tab in Next's

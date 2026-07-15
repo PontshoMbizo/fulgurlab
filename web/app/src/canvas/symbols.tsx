@@ -1,6 +1,6 @@
 import type { ReactElement, MouseEvent as ReactMouseEvent } from "react";
 import type { CircuitElm } from "@fulgurlab/engine";
-import { strokeFor, NEUTRAL_GRAY } from "./theme";
+import { voltageColor, overlayColor, NEUTRAL_GRAY, GROUND_COLOR, BACKGROUND } from "./theme";
 
 // Every symbol is authored in a LOCAL horizontal frame -- x from 0 (point1)
 // to dn (point2), y perpendicular -- exactly mirroring how Falstad's own
@@ -194,7 +194,7 @@ function TransistorBody({ elm, color, labels }: SymbolProps & { labels: [string,
             <line x1={baseX} y1={-16} x2={baseX} y2={16} stroke={color} strokeWidth={3} />
             <line x1={baseX} y1={-10} x2={dn} y2={-16} stroke={color} strokeWidth={2} />
             <line x1={baseX} y1={10} x2={dn} y2={16} stroke={color} strokeWidth={2} />
-            <circle cx={(baseX + dn) / 2} cy={0} r={20} fill="none" stroke="#4b5563" strokeWidth={1} />
+            <circle cx={(baseX + dn) / 2} cy={0} r={20} fill="none" stroke={NEUTRAL_GRAY} strokeWidth={1} />
             <text x={2} y={-4} fill={NEUTRAL_GRAY} fontSize={9} fontFamily="monospace">{labels[0]}</text>
         </>
     );
@@ -254,7 +254,7 @@ function InlineMeterBody({ elm, color, label, labelColor }: SymbolProps & { labe
     return (
         <>
             <line x1={0} y1={0} x2={l1} y2={0} stroke={color} strokeWidth={2} />
-            <circle cx={c} cy={0} r={r} fill="#111111" stroke={color} strokeWidth={2} />
+            <circle cx={c} cy={0} r={r} fill={BACKGROUND} stroke={color} strokeWidth={2} />
             <text x={c} y={4} fill={labelColor} fontSize={11} textAnchor="middle" fontFamily="monospace">{label}</text>
             <line x1={l2} y1={0} x2={dn} y2={0} stroke={color} strokeWidth={2} />
         </>
@@ -326,7 +326,17 @@ const BODIES: Record<string, BodyRenderer> = {
     I: ({ elm, color }) => <GateBody elm={elm} color={color} text="1" bubble={true} />,
     L: ({ elm, color }) => <OnePostBody elm={elm} color={color} text={switchPosition(elm) === 0 ? "L" : "H"} />,
     M: ({ elm, color }) => <OnePostBody elm={elm} color={color} text={(elm as unknown as { value?: string }).value || "?"} />,
-    "207": ({ elm }) => <LabeledNodeBody elm={elm} color="#818cf8" text={(elm as unknown as { text?: string }).text ?? ""} />,
+    "207": ({ elm, color }) => <LabeledNodeBody elm={elm} color={color} text={(elm as unknown as { text?: string }).text ?? ""} />,
+};
+
+// Ground and labeled nodes have a fixed resting accent (not the voltage
+// gradient every other element uses) -- ground is always the mockup's
+// green, labeled nodes a distinct indigo so free-text node names read as a
+// different "kind" of marker at a glance. Selected/hovered still override
+// either, same as everything else.
+const FIXED_BASE_COLOR: Partial<Record<string, string>> = {
+    g: GROUND_COLOR,
+    "207": "#818cf8",
 };
 
 export function ElementSymbol({
@@ -345,7 +355,7 @@ export function ElementSymbol({
         return (
             <text
                 x={elm.point1.x} y={elm.point1.y + size}
-                fill={selected ? "#00ffff" : "#e5e7eb"} fontSize={Math.min(size, 24)}
+                fill={overlayColor("#e5e7eb", selected, hovered)} fontSize={Math.min(size, 24)}
                 fontFamily="sans-serif" onMouseDown={onMouseDown} style={{ cursor: "pointer" }}
             >
                 {text}
@@ -357,13 +367,14 @@ export function ElementSymbol({
         return (
             <rect
                 x={x} y={y} width={Math.abs(elm.point2.x - elm.point1.x)} height={Math.abs(elm.point2.y - elm.point1.y)}
-                fill="none" stroke={selected ? "#00ffff" : "#6b7280"} strokeWidth={1.5} strokeDasharray="6 4"
+                fill="none" stroke={overlayColor(NEUTRAL_GRAY, selected, hovered)} strokeWidth={1.5} strokeDasharray="6 4"
                 onMouseDown={onMouseDown} style={{ cursor: "pointer" }}
             />
         );
     }
 
-    const color = strokeFor(safeVoltageDiff(elm), selected, hovered);
+    const baseColor = FIXED_BASE_COLOR[dumpType] ?? voltageColor(safeVoltageDiff(elm));
+    const color = overlayColor(baseColor, selected, hovered);
     const Body = BODIES[dumpType];
     const n = elm.getPostCount();
     const extraPosts: ReactElement[] = [];
