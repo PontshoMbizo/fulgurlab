@@ -90,6 +90,11 @@ export class TransistorElm extends CircuitElm {
     nonLinear() { return true; }
     getInternalNodeCount() { return 0; }
     getDumpType() { return 't'; }
+    // Must always emit all 4 tokens together: the constructor only reads
+    // lastvbe/lastvbc/beta when `params.length > 3` -- emitting fewer (e.g.
+    // just [pnp, beta]) would silently reset beta to its 100 default on
+    // every reparse.
+    dumpTokens() { return [this.pnp, this.lastvbe, this.lastvbc, this.beta]; }
     getPostCount() { return 3; }
 
     static FLAG_FLIP = 1; // "swap E/C" — draw-only, but flips collector/emitter posts too

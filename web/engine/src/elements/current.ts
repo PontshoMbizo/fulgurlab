@@ -40,6 +40,9 @@ export class CurrentElm extends CircuitElm {
     }
 
     getDumpType() { return 'i'; }
+    // Both must always be emitted together: the constructor only reads
+    // either when `params.length > 1`.
+    dumpTokens() { return [this.currentValue, this.maxVoltage]; }
 
     stamp(stamper: Stamper) {
         if (this.broken) {

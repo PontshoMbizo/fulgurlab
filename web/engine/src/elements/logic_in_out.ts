@@ -27,6 +27,10 @@ export class LogicInputElm extends SwitchElm {
     isTernary() { return (this.flags & LogicInputElm.FLAG_TERNARY) !== 0; }
     isNumeric() { return (this.flags & (LogicInputElm.FLAG_TERNARY | LogicInputElm.FLAG_NUMERIC)) !== 0; }
     getDumpType() { return 'L'; }
+    // hiV/loV are read from the LAST two tokens (params[length-2]/[length-1]),
+    // so this must always append exactly 2 tokens after SwitchElm's
+    // [position, momentary] to keep that back-indexing aligned.
+    dumpTokens() { return [...super.dumpTokens(), this.hiV, this.loV]; }
     getPostCount() { return 1; }
     getVoltageSourceCount() { return 1; }
     isWireEquivalent() { return false; }
@@ -70,6 +74,7 @@ export class LogicOutputElm extends CircuitElm {
     }
 
     getDumpType() { return 'M'; }
+    dumpTokens() { return [this.threshold]; }
     getPostCount() { return 1; }
     isTernary() { return (this.flags & LogicOutputElm.FLAG_TERNARY) !== 0; }
     isNumeric() { return (this.flags & (LogicOutputElm.FLAG_TERNARY | LogicOutputElm.FLAG_NUMERIC)) !== 0; }

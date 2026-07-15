@@ -14,11 +14,15 @@
 // saturated-color endpoints changed.
 
 // --- canvas backdrop (mirrors the mockup's layered background exactly) ---
+// Split into two layers (the mockup itself only needed one, since it never
+// pans/zooms): the dot grid represents real grid-snap positions, so it
+// belongs in world space and pans/zooms with the circuit; the vignette is a
+// pure viewport decoration and must stay fixed, or it'd visibly drift off
+// center as soon as panning was added.
 export const BACKGROUND = "#070707";
-export const CANVAS_BACKGROUND_IMAGE =
-    "radial-gradient(#161616 1.1px, transparent 1.1px), " +
-    "radial-gradient(125% 95% at 50% 30%, #191919 0%, #070707 72%)";
-export const CANVAS_BACKGROUND_SIZE = "26px 26px, 100% 100%";
+export const DOT_GRID_IMAGE = "radial-gradient(#161616 1.1px, transparent 1.1px)";
+export const DOT_GRID_SIZE = "26px 26px";
+export const VIGNETTE_IMAGE = "radial-gradient(125% 95% at 50% 30%, #191919 0%, #070707 72%)";
 export const CANVAS_VIGNETTE_SHADOW = "inset 0 0 160px 40px rgba(0,0,0,.6)";
 
 // --- circuit geometry colors ---

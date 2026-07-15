@@ -1,4 +1,4 @@
-import { CircuitElm, Stamper, Point } from './base';
+import { CircuitElm, Stamper, Point, escapeDumpText, unescapeDumpText } from './base';
 import type { CircuitNode } from '../core/node';
 
 // Ported from LabeledNodeElm.java. Acts like a wire: every LabeledNodeElm
@@ -29,7 +29,7 @@ export class LabeledNodeElm extends CircuitElm {
     constructor(x: number, y: number, x2: number, y2: number, flags: number, params?: string[]) {
         super(x, y, x2, y2, flags);
         if (Array.isArray(params) && params.length > 0) {
-            this.text = params[0];
+            this.text = unescapeDumpText(params[0]);
         }
     }
 
@@ -45,6 +45,7 @@ export class LabeledNodeElm extends CircuitElm {
     isInternal() { return (this.flags & LabeledNodeElm.FLAG_INTERNAL) !== 0; }
 
     getDumpType() { return 207; }
+    dumpTokens() { return [escapeDumpText(this.text)]; }
     getPostCount() { return this.busWidth; }
     getBusWidth() { return this.busWidth; }
 

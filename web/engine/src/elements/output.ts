@@ -19,6 +19,7 @@ export class OutputElm extends CircuitElm {
     }
 
     getDumpType() { return 'O'; }
+    dumpTokens() { return [this.scale]; }
     getPostCount() { return 1; }
 
     isFixed() { return (this.flags & OutputElm.FLAG_FIXED) !== 0; }

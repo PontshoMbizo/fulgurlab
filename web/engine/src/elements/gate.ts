@@ -82,6 +82,11 @@ export class GateElm extends CircuitElm {
     // Subclasses always override with their own numeric dump id; this fallback
     // exists only so the abstract base is instantiable-shaped like the Java one.
     getDumpType(): number | string { return this.getXmlDumpType(); }
+    // The 2nd token is read back as `lastOutputVoltage` and compared against
+    // `highVoltage*0.5` to derive the boolean `lastOutput` -- so, to
+    // round-trip lastOutput faithfully, emit the same 0/highVoltage encoding
+    // doStep() itself uses for the voltage source's driven value.
+    dumpTokens() { return [this.inputCount, this.lastOutput ? this.highVoltage : 0, this.highVoltage]; }
     getXmlDumpType(): string { return "Gate"; }
     getPostCount() { return this.inputCount + 1; }
     getVoltageSourceCount() { return 1; }

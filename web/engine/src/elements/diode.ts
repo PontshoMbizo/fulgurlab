@@ -172,6 +172,15 @@ export class DiodeElm extends CircuitElm {
     nonLinear() { return true; }
     getInternalNodeCount() { return this.hasResistance ? 1 : 0; }
     getDumpType() { return 'd'; }
+    // The constructor only ever reads params[0] as modelName when
+    // FLAG_MODEL (flags&2) is set -- emitting it unconditionally would be
+    // harmless (just ignored on reparse) but emitting it *conditionally* on
+    // the same flag keeps the dump line free of a meaningless token when
+    // it'll never be read back, and matches LEDElm's own (broader) offset
+    // check below for the same reasoning.
+    dumpTokens(): (string | number | boolean)[] {
+        return (this.flags & 2) !== 0 ? [this.modelName] : [];
+    }
 
     reset() {
         super.reset();

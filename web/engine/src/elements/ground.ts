@@ -16,6 +16,7 @@ export class GroundElm extends CircuitElm {
     }
 
     getDumpType() { return 'g'; }
+    dumpTokens() { return [this.symbolType]; }
     getPostCount() { return 1; }
 
     isGround() { return true; }

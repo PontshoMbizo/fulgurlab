@@ -52,6 +52,7 @@ export class ProbeElm extends CircuitElm {
     }
 
     getDumpType() { return 'p'; }
+    dumpTokens() { return [this.meter, this.scale, this.resistance]; }
 
     mustShowVoltage() { return (this.flags & ProbeElm.FLAG_SHOWVOLTAGE) !== 0; }
     drawAsCircle() { return (this.flags & ProbeElm.FLAG_CIRCLE) !== 0; }

@@ -15,7 +15,8 @@ export class ResistorElm extends CircuitElm {
     }
 
     getDumpType() { return 'r'; }
-    
+    dumpTokens() { return [this.resistance]; }
+
     stamp(stamper: Stamper) {
         stamper.stampResistor(this.nodes[0], this.nodes[1], this.resistance);
     }

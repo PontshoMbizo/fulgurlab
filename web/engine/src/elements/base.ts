@@ -6,6 +6,57 @@ export function pointKey(p: Point): string {
     return `${p.x},${p.y}`;
 }
 
+// Ported from CustomLogicModel.java's escape()/unescape() (:257) -- the
+// scheme Java uses so a free-text dump field (TextElm's text, LabeledNodeElm's
+// label, PotElm's slider text, ...) that may itself contain spaces, newlines,
+// or characters the dump format gives other meaning to can still survive as
+// a single whitespace-delimited token on an element's dump line. Order matters
+// on encode: backslash must be escaped FIRST, or a backslash introduced by a
+// later replacement (e.g. space -> "\s") would itself get doubled by a
+// backslash pass that ran after it.
+export function escapeDumpText(s: string): string {
+    return s
+        .replace(/\\/g, '\\\\')
+        .replace(/\n/g, '\\n')
+        .replace(/ /g, '\\s')
+        .replace(/\+/g, '\\p')
+        .replace(/=/g, '\\q')
+        .replace(/#/g, '\\h')
+        .replace(/&/g, '\\a')
+        .replace(/\r/g, '\\r');
+}
+
+// Reverses escapeDumpText(). Must be a single left-to-right scan (not
+// sequential global replaces in reverse) -- unescaping "\\n" to "\n" and then
+// separately unescaping some other "\" + "n" pair that only exists because of
+// an earlier substitution would corrupt the text. An unrecognized escape
+// (stray backslash not followed by one of the known letters) is passed
+// through literally rather than dropped, so hand-edited or foreign dump text
+// degrades gracefully instead of silently losing a character.
+export function unescapeDumpText(s: string): string {
+    let out = '';
+    for (let i = 0; i < s.length; i++) {
+        const c = s[i];
+        if (c === '\\' && i + 1 < s.length) {
+            const next = s[i + 1];
+            switch (next) {
+                case '\\': out += '\\'; i++; break;
+                case 'n': out += '\n'; i++; break;
+                case 's': out += ' '; i++; break;
+                case 'p': out += '+'; i++; break;
+                case 'q': out += '='; i++; break;
+                case 'h': out += '#'; i++; break;
+                case 'a': out += '&'; i++; break;
+                case 'r': out += '\r'; i++; break;
+                default: out += c; // unrecognized escape -- keep the backslash literally
+            }
+        } else {
+            out += c;
+        }
+    }
+    return out;
+}
+
 // Geometry helpers ported from CircuitElm.java. These compute POST positions
 // (load-bearing for circuit connectivity — two posts at the same coordinate
 // are the same node) as pure data; actual pixel rendering is a Phase 5
@@ -117,6 +168,25 @@ export abstract class CircuitElm {
     }
 
     abstract getDumpType(): number | string;
+
+    // Serializes this element back to the same "<dumpType> x y x2 y2 flags
+    // <tokens...>" text line createElement()/CircuitParser read it from --
+    // the pairing that makes undo/redo and save/load possible. This is a NEW,
+    // self-consistent extended format for this port's own round-tripping
+    // (built here rather than deferred to the fuller io/falstadText.ts of
+    // docs/react-rewrite-plan.md §7), not a strict mirror of Java's classic
+    // text dump: subclasses' dumpTokens() emit exactly what their OWN
+    // constructor's `params` parsing reads back, in the same order --
+    // verified per-element against each constructor, not assumed from the
+    // Java source's (sometimes incomplete) classic dump() -- see the
+    // per-element dumpTokens() overrides for the specific ordering notes.
+    dump(): string {
+        return [this.getDumpType(), this.x, this.y, this.x2, this.y2, this.flags, ...this.dumpTokens()].join(' ');
+    }
+    // Default: no extra tokens beyond the base geometry+flags. Overridden by
+    // any element whose constructor reads fields out of `params`.
+    dumpTokens(): (string | number | boolean)[] { return []; }
+
     getPostCount(): number { return 2; }
     getVoltageSourceCount(): number { return 0; }
     getInternalNodeCount(): number { return 0; }

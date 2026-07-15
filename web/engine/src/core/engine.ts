@@ -26,6 +26,23 @@ export class CircuitEngine implements Stamper {
         this.t = 0;
     }
 
+    // Serializes the whole circuit to this port's own extended text format:
+    // a `$` options line (currently just timeStep, matching what
+    // CircuitParser.parseOption() already reads back) followed by one
+    // element line per elmList entry via CircuitElm.dump(). This is the
+    // round-trip foundation undo/redo (in-memory snapshots) and save/load
+    // (file export/import) both build on -- see docs/react-rewrite-plan.md's
+    // 2026-07-15 session notes for why this is a new self-consistent format
+    // rather than a strict mirror of Java's classic (and, per its own source,
+    // incomplete) text dump.
+    dump(): string {
+        const lines = [`$ 1 ${this.timeStep} 0 0`];
+        for (const elm of this.elmList) {
+            lines.push(elm.dump());
+        }
+        return lines.join('\n');
+    }
+
     // Convenience wrapper used by CircuitParser after populating elmList.
     setup() {
         this.analyzeAndStamp();

@@ -45,3 +45,6 @@ next-env.d.ts
 # discarded per-check, never meant to be committed
 src/canvas/_verify_symbols.tsx
 src/canvas/_verify_bundle.cjs
+src/engine/_verify_undo.ts
+src/engine/_verify_saveload.ts
+src/inspector/_verify_schema.ts

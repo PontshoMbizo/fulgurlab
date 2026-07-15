@@ -1026,6 +1026,121 @@ and a clean render with no runtime errors, but its actual blur/glassmorphism
 checking `cd web/app && npm run dev -- --turbopack` locally before trusting
 the glass-panel look pixel-for-pixel.
 
+### 2026-07-15 session note, continued again — editor UX completeness (move, pan/zoom, undo/redo, save/load, edit dialogs)
+
+Pontsho asked to "get the full circuitjs functionality"; narrowed via a
+clarifying question to **Editor UX completeness** first — the gap between a
+first draft and something that feels like a real editor. Five pieces landed
+this session, each building on the last:
+
+**Move + pan/zoom (`CircuitCanvas.tsx`).** `EngineStore.setElementGeometry()`
+mutates an element's raw x/y/x2/y2 then calls `preStamp()`+`reanalyze()` —
+moving is just "placing again" from the engine's point of view. Viewport is
+`{x, y, scale}` with the standard zoom-centered-on-cursor offset recompute;
+the wheel listener is attached natively (`{passive:false}`) since React's
+synthetic wheel handler is passive by default and would silently eat
+`preventDefault()`. Pan is middle-mouse-drag or Space+left-drag. One real bug
+caught before shipping: every active gesture (pan/place/move) is driven by
+**window-level** mousemove/mouseup listeners set up fresh per-gesture, not
+React's `onMouseMove`/`onMouseUp` props on the `<svg>` — those stop firing
+the instant the cursor leaves the SVG's bounding box, which is easy to do
+mid-drag (past the browser edge, or under one of the floating chrome
+panels), and would otherwise leave a gesture permanently stuck with no
+mouseup ever arriving. `endGesture` holds a *cancel* callback (for Escape)
+kept deliberately distinct from each gesture's own mouseup handler: cancelling
+a placement drag must not place the element at all, and cancelling a move
+reverts to the pre-drag position rather than committing wherever the cursor
+happened to land.
+
+**dump()/parse() round-trip (`elements/base.ts` + all ~29 element files +
+`core/engine.ts`).** Every element now has `dumpTokens()` emitting exactly
+what its own constructor's `params` parsing reads back, in the same order —
+verified per-element by reading each constructor directly (not assumed from
+Java's own dump()), which caught several real footguns before they shipped:
+TransistorElm's beta is only read when `params.length > 3`, so all four
+tokens (pnp/lastvbe/lastvbc/beta) must always be emitted together or beta
+silently resets to 100 on reload; LEDElm's RGB-token offset depends on
+FLAG_MODEL *or* FLAG_FWDROP (broader than DiodeElm's own FLAG_MODEL-only
+check), so it needs its own independent conditional rather than delegating
+to `super.dumpTokens()`; GateElm's `lastOutput` boolean round-trips through
+the same `lastOutput ? highVoltage : 0` encoding `doStep()` itself already
+uses. Free-text fields (TextElm/LabeledNodeElm/PotElm) get a real
+escape/unescape scheme (`\\`→`\\\\`, space→`\s`, `+`/`=`/`#`/`&`→`\p`/`\q`/
+`\h`/`\a`, newline/CR→`\n`/`\r`, backslash escaped first on encode, single-
+pass scan on decode) so embedded spaces and newlines survive as one
+whitespace-delimited dump token — a dual-path constructor (single escaped
+token when `params.length` matches this port's own new shape; the old
+multi-token space-join kept only for back-compat with the existing
+hand-authored test) means nothing that already worked stopped working.
+This is a **new, self-consistent extended format for this port's own
+round-tripping**, not a strict mirror of Java's classic (and, by its own
+source, incomplete) text dump — full Falstad-file interop stays deferred to
+the fuller `io/falstadText.ts` of §7. `CircuitEngine.dump()` assembles a `$`
+options line + one element line per `elmList` entry; `CircuitParser` (already
+existing) is the reload path. New `web/engine/test/dump-roundtrip.test.ts`
+exercises the *real* path (dump() → whitespace-tokenize → `createElement()`,
+not just calling `dumpTokens()` directly) for every Tier-1 type plus a
+whole-circuit dump→parse→dump idempotency check — 29 new tests, all green.
+
+**Undo/redo (`EngineStore`).** Snapshots are this port's own dump text, not
+object clones — restoring is just "parse this text", which already rebuilds
+geometry/nodes/matrices correctly in one call. `beginTransaction()`/
+`endTransaction()` bracket a whole gesture (e.g. a full drag, not one
+snapshot per mousemove) into a single undo step, and skip pushing anything
+at all when the state nets to no change (a cancelled drag that reverts to
+its start position correctly produces zero undo entries). Bounded to 100
+steps. Ctrl+Z/Ctrl+Shift+Z/Ctrl+Y wired in `CircuitCanvas`'s keydown handler,
+guarded the same way Delete/Backspace already were so native text-input undo
+isn't hijacked once a field is focused. New top-center `UndoRedoCluster.tsx`
+pill (not squeezed into the top-left toolbar or top-right status cluster,
+both of which stay byte-for-byte matching the mockup — this has no mockup
+equivalent at all, so top-center is the one spot that can't collide with
+either regardless of their own dynamic widths).
+
+**Save/load.** `EngineStore.exportText()`/`importText()`/`importFile()`
+wrap the same dump/parse foundation; export triggers a browser download of
+`circuit.txt`, import works both via a file-picker button (same
+`UndoRedoCluster` pill) and drag-and-drop onto the canvas itself. Import is
+itself one undoable action, and a malformed/corrupt file surfaces through
+`status` (shown as a small error pill under the cluster) rather than
+crashing — `CircuitParser.parse()` can throw on a singular matrix, unlike
+`reanalyze()`'s own internal try/catch, so `loadSnapshot()` needed its own.
+
+**Schema-driven edit dialog (`inspector/schema.ts` + `EditableField.tsx`).**
+Replaces the Inspector's raw read-only field dump with labeled, typed inputs
+(number/select/checkbox/textarea) per dump type, committing through one new
+`EngineStore.updateElementField()` (itself one undo step per commit — number/
+text fields hold their own in-progress value locally and commit on blur/Enter
+rather than per keystroke, matching the move-gesture coalescing pattern;
+select/checkbox commit immediately since picking an option is already
+atomic). **Deliberately excludes** a few fields that exist on their
+elements but aren't safe to expose yet: DiodeElm/LEDElm's `modelName` (only
+dumped when FLAG_MODEL is set — editing the text without also setting that
+bit would silently not survive a reload), MosfetElm's `pnp` (flag-derived at
+construction, not a dump token at all), OpAmpElm's `gain`/`maxOut`/`minOut`
+(no dump token exists for these in this port). Rather than ship a field that
+edits live but quietly loses the edit on save/reload or undo/redo, these
+wait for a later pass. Every schema entry was checked against a real
+constructed instance of its element (dump-type key actually matches
+`getDumpType()`, every field path — including one level of nesting, e.g.
+`InductorElm.ind.inductance` — resolves to a real property) via a headless
+verification script, not just read by inspection.
+
+**Verification, all sessions.** `web/engine`: `tsc --noEmit` clean, `vitest
+run` — 55/55 passing (29 new this session). `web/app`: `tsc --noEmit` and
+`eslint src/` both clean. Three headless verification scripts (undo/redo
+bookkeeping incl. the whole-gesture-coalesces-to-one-step and
+no-net-change-pushes-nothing invariants; export/import incl. byte-identical
+re-export and "replaces, doesn't append"; schema/field-path correctness
+against real instances) written as `_verify_*.ts` scratch files, bundled with
+esbuild (`--bundle --platform=node --format=cjs`) since neither plain
+`npx tsx` nor Node's native `--experimental-strip-types` can resolve this
+monorepo's extensionless workspace-package imports without a bundler — run
+via plain `node`, then neutered to `export {};` per the project's established
+scratch-file pattern (can't delete files in this sandbox). `next dev
+--turbopack` + curl smoke-tested after each of the five pieces landed: HTTP
+200, no error/warn lines, every time.
+
 ---
 
 ## Appendix A — Tables

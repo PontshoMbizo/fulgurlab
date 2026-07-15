@@ -32,4 +32,16 @@ export class LEDElm extends DiodeElm {
     }
 
     getDumpType() { return '162'; }
+    // Independent of DiodeElm.dumpTokens() -- this class's own offset check
+    // (FLAG_MODEL *or* FLAG_FWDROP) is broader than DiodeElm's (FLAG_MODEL
+    // only), so delegating to super() here would misalign the RGB/brightness
+    // tokens that follow whenever FLAG_FWDROP is set without FLAG_MODEL.
+    dumpTokens(): (string | number | boolean)[] {
+        const tokens: (string | number | boolean)[] = [];
+        if ((this.flags & 2) !== 0 || (this.flags & 1) !== 0) {
+            tokens.push(this.modelName);
+        }
+        tokens.push(this.colorR, this.colorG, this.colorB, this.maxBrightnessCurrent);
+        return tokens;
+    }
 }

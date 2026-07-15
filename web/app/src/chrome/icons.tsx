@@ -89,3 +89,46 @@ export function TrashIcon({ size = 15 }: IconProps) {
         </svg>
     );
 }
+
+// Undo/redo -- not part of the reference mockup (it has no editing-history
+// concept), so these aren't transcribed from it like the icons above. Plain
+// "corner-turn-back"/"corner-turn-forward" arrows, mirrored from each other,
+// kept in the same stroke style as the rest of the set so a new cluster
+// reads as belonging to the same app rather than bolted on.
+export function UndoIcon({ size = 16 }: IconProps) {
+    return (
+        <svg width={size} height={size} {...base} strokeWidth={2.2}>
+            <path d="M9 14L4 9l5-5" />
+            <path d="M4 9h10a6 6 0 0 1 0 12h-2" />
+        </svg>
+    );
+}
+
+export function RedoIcon({ size = 16 }: IconProps) {
+    return (
+        <svg width={size} height={size} {...base} strokeWidth={2.2}>
+            <path d="M15 14l5-5-5-5" />
+            <path d="M20 9H10a6 6 0 0 0 0 12h2" />
+        </svg>
+    );
+}
+
+// Save (export to .txt) / Load (import from a file) -- also not part of the
+// reference mockup, same reasoning as Undo/Redo above.
+export function DownloadIcon({ size = 16 }: IconProps) {
+    return (
+        <svg width={size} height={size} {...base} strokeWidth={2.2}>
+            <path d="M12 3v13" />
+            <path d="M7 11l5 5 5-5" />
+            <path d="M4 21h16" />
+        </svg>
+    );
+}
+
+export function FolderIcon({ size = 16 }: IconProps) {
+    return (
+        <svg width={size} height={size} {...base} strokeWidth={2.2}>
+            <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
+        </svg>
+    );
+}

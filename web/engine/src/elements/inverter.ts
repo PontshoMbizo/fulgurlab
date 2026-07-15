@@ -25,6 +25,7 @@ export class InverterElm extends CircuitElm {
     }
 
     getDumpType() { return 'I'; }
+    dumpTokens() { return [this.slewRate, this.highVoltage]; }
     getPostCount() { return 2; }
     getVoltageSourceCount() { return 1; }
     setHighVoltage(hv: number) { this.highVoltage = hv; }

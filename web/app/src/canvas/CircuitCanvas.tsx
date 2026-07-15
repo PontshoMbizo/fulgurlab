@@ -1,29 +1,38 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import type { MouseEvent as ReactMouseEvent } from "react";
+import type { MouseEvent as ReactMouseEvent, DragEvent as ReactDragEvent } from "react";
 import { createElement, CircuitElm } from "@fulgurlab/engine";
 import { engineStore } from "@/engine/store";
 import type { PaletteItem } from "@/palette/palette";
 import { GRID_SIZE, snap, distanceToElement } from "./draw";
 import { ElementSymbol } from "./symbols";
-import { BACKGROUND, CANVAS_BACKGROUND_IMAGE, CANVAS_BACKGROUND_SIZE, CANVAS_VIGNETTE_SHADOW, SELECT_COLOR } from "./theme";
+import { BACKGROUND, DOT_GRID_IMAGE, DOT_GRID_SIZE, VIGNETTE_IMAGE, CANVAS_VIGNETTE_SHADOW, SELECT_COLOR } from "./theme";
 
-const HIT_THRESHOLD = 8;
+const HIT_THRESHOLD = 8; // screen pixels -- divided by viewport.scale before comparing against world-space distances
 const DEFAULT_SPAN = GRID_SIZE * 3;
+const MIN_SCALE = 0.25;
+const MAX_SCALE = 4;
+
+// Just the bits toWorldPoint/pan math need -- shared between React's
+// SyntheticEvent (mousedown, still bound via JSX so it's scoped to the SVG
+// element) and native window-level MouseEvents (move/up, deliberately
+// window-bound so a fast pan/drag that leaves the SVG's bounding box -- easy
+// to do, e.g. dragging past the browser edge or under a floating chrome
+// panel -- doesn't get stuck with a gesture that never receives its mouseup).
+interface PointerLike { clientX: number; clientY: number; }
+
+interface Viewport {
+    x: number; // screen-space pan offset
+    y: number;
+    scale: number;
+}
 
 interface Props {
     activeTool: PaletteItem | null;
     onPlaced?: () => void;
 }
 
-// SVG-based renderer: each element is a real <g> (see symbols.tsx) instead
-// of an imperative Canvas2D draw call, so components render as proper
-// vector symbols (schematic shapes, not the earlier crude approximations)
-// and stay crisp at any zoom/DPI. The engine itself still owns all state;
-// this component just re-renders the whole elmList from engineStore on
-// every version bump (plan Sec 3.2's "canvas reads engine state directly"
-// principle, adapted from an imperative rAF loop to a declarative SVG tree).
 export default function CircuitCanvas({ activeTool, onPlaced }: Props) {
     useSyncExternalStore(engineStore.subscribe, engineStore.getVersion, engineStore.getVersion);
     const svgRef = useRef<SVGSVGElement>(null);
@@ -32,6 +41,22 @@ export default function CircuitCanvas({ activeTool, onPlaced }: Props) {
     const [dragCurrent, setDragCurrent] = useState<{ x: number; y: number } | null>(null);
     const [hovered, setHovered] = useState<CircuitElm | null>(null);
     const [size, setSize] = useState({ w: 800, h: 600 });
+    const [viewport, setViewport] = useState<Viewport>({ x: 0, y: 0, scale: 1 });
+    const [spacePressed, setSpacePressed] = useState(false);
+    const [isPanning, setIsPanning] = useState(false);
+    const [isDragOverFile, setIsDragOverFile] = useState(false);
+
+    // Kept in a ref (not state) since handleMouseDownRef/window listeners
+    // read the *latest* value without needing to re-subscribe on every
+    // render -- viewportRef mirrors viewport for that same reason.
+    const viewportRef = useRef(viewport);
+    viewportRef.current = viewport;
+
+    const moveState = useRef<{
+        elm: CircuitElm; startWorldX: number; startWorldY: number;
+        origX: number; origY: number; origX2: number; origY2: number;
+    } | null>(null);
+    const panState = useRef<{ startScreenX: number; startScreenY: number; startX: number; startY: number } | null>(null);
 
     // Size the SVG viewport to its container.
     useEffect(() => {
@@ -45,9 +70,42 @@ export default function CircuitCanvas({ activeTool, onPlaced }: Props) {
         return () => ro.disconnect();
     }, []);
 
-    const toCanvasPoint = useCallback((e: ReactMouseEvent) => {
+    // Screen -> world conversion, honoring the current pan/zoom. Grid-snap
+    // happens in world space so placement/move behavior is resolution
+    // independent of zoom level. Reads viewportRef (not the viewport prop
+    // closed over at render time) so it stays correct inside the
+    // window-level listeners set up further down, which are attached once
+    // per gesture rather than re-attached on every viewport change.
+    const toWorldPoint = useCallback((e: PointerLike, doSnap = true) => {
         const rect = svgRef.current!.getBoundingClientRect();
-        return { x: snap(e.clientX - rect.left), y: snap(e.clientY - rect.top) };
+        const v = viewportRef.current;
+        const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+        const wx = (sx - v.x) / v.scale;
+        const wy = (sy - v.y) / v.scale;
+        return doSnap ? { x: snap(wx), y: snap(wy) } : { x: wx, y: wy };
+    }, []);
+
+    // Wheel-to-zoom, centered on the cursor: registered as a native
+    // (non-passive) listener since React attaches wheel handlers passively
+    // by default, which would silently ignore preventDefault() and let the
+    // page scroll instead of zooming the canvas.
+    useEffect(() => {
+        const svg = svgRef.current;
+        if (!svg) return;
+        const onWheel = (e: WheelEvent) => {
+            e.preventDefault();
+            const rect = svg.getBoundingClientRect();
+            const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+            setViewport((v) => {
+                const worldX = (sx - v.x) / v.scale;
+                const worldY = (sy - v.y) / v.scale;
+                const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+                const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, v.scale * factor));
+                return { x: sx - worldX * newScale, y: sy - worldY * newScale, scale: newScale };
+            });
+        };
+        svg.addEventListener("wheel", onWheel, { passive: false });
+        return () => svg.removeEventListener("wheel", onWheel);
     }, []);
 
     const finalizePlacement = useCallback((start: { x: number; y: number }, end: { x: number; y: number }, tool: PaletteItem) => {
@@ -65,7 +123,7 @@ export default function CircuitCanvas({ activeTool, onPlaced }: Props) {
 
     const pickElement = useCallback((p: { x: number; y: number }): CircuitElm | null => {
         let best: CircuitElm | null = null;
-        let bestDist = HIT_THRESHOLD;
+        let bestDist = HIT_THRESHOLD / viewportRef.current.scale;
         for (const elm of engineStore.engine.elmList) {
             const dist = distanceToElement(elm, p.x, p.y);
             if (dist < bestDist) {
@@ -76,64 +134,220 @@ export default function CircuitCanvas({ activeTool, onPlaced }: Props) {
         return best;
     }, []);
 
-    const handleMouseDown = useCallback((e: ReactMouseEvent) => {
-        const p = toCanvasPoint(e);
-        if (activeTool) {
-            dragStart.current = p;
-            setDragCurrent(p);
-        } else {
-            engineStore.select(pickElement(p));
-        }
-    }, [activeTool, toCanvasPoint, pickElement]);
+    // Every active gesture (pan / place-new-element / move-existing-element)
+    // is driven by window-level move/up listeners set up fresh at the start
+    // of that gesture and torn down at its end -- not React's onMouseMove/
+    // onMouseUp props on the SVG, which stop firing the moment the cursor
+    // leaves the SVG's bounding box (easy to do mid-drag: past the browser
+    // edge, or under one of the floating chrome panels that sit visually on
+    // top of the canvas). This mirrors SpeedSlider.tsx's drag pattern.
+    //
+    // endGesture holds a zero-arg *cancel* callback (used by Escape), kept
+    // deliberately distinct from each gesture's mouseup handler: cancelling a
+    // placement drag must NOT place the element (unlike a normal mouseup,
+    // which does), and cancelling a move reverts to the pre-drag position
+    // rather than committing wherever the cursor happened to be.
+    const endGesture = useRef<(() => void) | null>(null);
 
-    const handleMouseMove = useCallback((e: ReactMouseEvent) => {
-        const p = toCanvasPoint(e);
-        if (activeTool && dragStart.current) {
-            setDragCurrent(p);
-        } else if (!activeTool) {
-            setHovered(pickElement(p));
-        }
-    }, [activeTool, toCanvasPoint, pickElement]);
+    const startPan = useCallback((e: ReactMouseEvent) => {
+        e.preventDefault();
+        panState.current = { startScreenX: e.clientX, startScreenY: e.clientY, startX: viewportRef.current.x, startY: viewportRef.current.y };
+        setIsPanning(true);
+        const move = (ev: MouseEvent) => {
+            const ps = panState.current;
+            if (!ps) return;
+            const dx = ev.clientX - ps.startScreenX, dy = ev.clientY - ps.startScreenY;
+            setViewport((v) => ({ ...v, x: ps.startX + dx, y: ps.startY + dy }));
+        };
+        const stop = () => {
+            panState.current = null;
+            setIsPanning(false);
+            window.removeEventListener("mousemove", move);
+            window.removeEventListener("mouseup", up);
+            endGesture.current = null;
+        };
+        const up = () => stop();
+        window.addEventListener("mousemove", move);
+        window.addEventListener("mouseup", up);
+        endGesture.current = stop;
+    }, []);
 
-    const handleMouseUp = useCallback((e: ReactMouseEvent) => {
-        if (activeTool && dragStart.current) {
-            const end = toCanvasPoint(e);
-            finalizePlacement(dragStart.current, end, activeTool);
+    const startPlace = useCallback((start: { x: number; y: number }, tool: PaletteItem) => {
+        dragStart.current = start;
+        setDragCurrent(start);
+        const move = (ev: MouseEvent) => setDragCurrent(toWorldPoint(ev));
+        const teardown = () => {
             dragStart.current = null;
             setDragCurrent(null);
+            window.removeEventListener("mousemove", move);
+            window.removeEventListener("mouseup", up);
+            endGesture.current = null;
+        };
+        const up = (ev: MouseEvent) => {
+            finalizePlacement(start, toWorldPoint(ev), tool);
+            teardown();
             onPlaced?.();
+        };
+        const cancel = () => teardown();
+        window.addEventListener("mousemove", move);
+        window.addEventListener("mouseup", up);
+        endGesture.current = cancel;
+    }, [toWorldPoint, finalizePlacement, onPlaced]);
+
+    const startMove = useCallback((elm: CircuitElm, start: { x: number; y: number }) => {
+        const origX = elm.x, origY = elm.y, origX2 = elm.x2, origY2 = elm.y2;
+        moveState.current = { elm, startWorldX: start.x, startWorldY: start.y, origX, origY, origX2, origY2 };
+        // Brackets the WHOLE drag (every intermediate setElementGeometry()
+        // call below) into a single undo step, rather than one per
+        // mousemove -- see EngineStore.beginTransaction()'s doc comment.
+        engineStore.beginMoveTransaction();
+        const move = (ev: MouseEvent) => {
+            const m = moveState.current;
+            if (!m) return;
+            const p = toWorldPoint(ev);
+            const dx = p.x - m.startWorldX, dy = p.y - m.startWorldY;
+            engineStore.setElementGeometry(m.elm, m.origX + dx, m.origY + dy, m.origX2 + dx, m.origY2 + dy);
+        };
+        // Moving is already committed live (setElementGeometry runs on every
+        // move above) -- mouseup just ends the gesture and closes out the
+        // undo transaction opened above. Escape instead reverts to the
+        // pre-drag position first (cancel): since that puts the circuit back
+        // to exactly the pendingSnapshot text, endMoveTransaction() sees no
+        // net change and correctly pushes no undo entry at all.
+        const teardown = () => {
+            moveState.current = null;
+            window.removeEventListener("mousemove", move);
+            window.removeEventListener("mouseup", up);
+            endGesture.current = null;
+            engineStore.endMoveTransaction();
+        };
+        const up = () => teardown();
+        const cancel = () => {
+            engineStore.setElementGeometry(elm, origX, origY, origX2, origY2);
+            teardown();
+        };
+        window.addEventListener("mousemove", move);
+        window.addEventListener("mouseup", up);
+        endGesture.current = cancel;
+    }, [toWorldPoint]);
+
+    const handleMouseDown = useCallback((e: ReactMouseEvent) => {
+        const wantsPan = e.button === 1 || (e.button === 0 && spacePressed);
+        if (wantsPan) {
+            startPan(e);
+            return;
         }
-    }, [activeTool, toCanvasPoint, finalizePlacement, onPlaced]);
+        const p = toWorldPoint(e);
+        if (activeTool) {
+            startPlace(p, activeTool);
+        } else {
+            const elm = pickElement(p);
+            engineStore.select(elm);
+            if (elm) startMove(elm, p);
+        }
+    }, [activeTool, toWorldPoint, pickElement, spacePressed, startPan, startPlace, startMove]);
+
+    // Hover preview only, while nothing is being dragged -- real drag
+    // tracking lives in the window-level listeners started above.
+    const handleMouseMove = useCallback((e: ReactMouseEvent) => {
+        if (activeTool || moveState.current || panState.current) return;
+        setHovered(pickElement(toWorldPoint(e)));
+    }, [activeTool, toWorldPoint, pickElement]);
 
     useEffect(() => {
+        const isTypingTarget = () => {
+            const active = document.activeElement;
+            return !!active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA");
+        };
         const onKeyDown = (e: KeyboardEvent) => {
             if ((e.key === "Delete" || e.key === "Backspace") && engineStore.selected) {
-                const active = document.activeElement;
-                if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) return;
+                if (isTypingTarget()) return;
                 engineStore.removeElement(engineStore.selected);
                 e.preventDefault();
             }
             if (e.key === "Escape") {
+                endGesture.current?.();
                 dragStart.current = null;
                 setDragCurrent(null);
             }
+            if (e.code === "Space" && !isTypingTarget()) {
+                setSpacePressed(true);
+                e.preventDefault();
+            }
+            // Undo/redo: skipped while typing so native input-level undo
+            // (e.g. inside a future edit dialog's text field) isn't hijacked
+            // by the circuit-level history. Ctrl+Y is the common Windows/
+            // Linux redo chord; Ctrl+Shift+Z covers Mac and browser-style
+            // habits -- both are wired to the same redo() call.
+            if ((e.ctrlKey || e.metaKey) && !isTypingTarget()) {
+                const key = e.key.toLowerCase();
+                if (key === "z" && !e.shiftKey) {
+                    engineStore.undo();
+                    e.preventDefault();
+                } else if ((key === "z" && e.shiftKey) || key === "y") {
+                    engineStore.redo();
+                    e.preventDefault();
+                }
+            }
+        };
+        const onKeyUp = (e: KeyboardEvent) => {
+            if (e.code === "Space") setSpacePressed(false);
         };
         window.addEventListener("keydown", onKeyDown);
-        return () => window.removeEventListener("keydown", onKeyDown);
+        window.addEventListener("keyup", onKeyUp);
+        return () => {
+            window.removeEventListener("keydown", onKeyDown);
+            window.removeEventListener("keyup", onKeyUp);
+        };
     }, []);
 
     const selected = engineStore.selected;
+    const worldTransform = `translate(${viewport.x} ${viewport.y}) scale(${viewport.scale})`;
+    const cursor = activeTool ? "crosshair" : isPanning ? "grabbing" : spacePressed ? "grab" : "default";
+
+    // Drag-and-drop a circuit .txt file onto the canvas as an alternative to
+    // UndoRedoCluster's file-picker button -- both funnel through
+    // engineStore.importFile(), which owns the actual FileReader logic.
+    const handleDragOver = (e: ReactDragEvent) => {
+        e.preventDefault();
+        setIsDragOverFile(true);
+    };
+    const handleDragLeave = () => setIsDragOverFile(false);
+    const handleDrop = (e: ReactDragEvent) => {
+        e.preventDefault();
+        setIsDragOverFile(false);
+        const file = e.dataTransfer.files?.[0];
+        if (file) engineStore.importFile(file);
+    };
 
     return (
-        <div ref={containerRef} className="w-full h-full relative" style={{ background: BACKGROUND }}>
-            {/* Backdrop: dot-grid + soft radial vignette, exactly mirroring the
-                reference mockup's own layered CSS background-image (not an SVG
-                pattern) -- kept as plain divs so the vignette's inset box-shadow
-                sits cleanly above it without fighting SVG stacking. */}
+        <div
+            ref={containerRef}
+            className="w-full h-full relative overflow-hidden"
+            style={{ background: BACKGROUND }}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+        >
+            {isDragOverFile && (
+                <div
+                    className="absolute inset-2 rounded-2xl pointer-events-none z-10"
+                    style={{ border: "2px dashed #22d3ee", background: "rgba(34,211,238,.06)" }}
+                />
+            )}
+            {/* Dot grid lives in world space -- it represents real grid-snap
+                positions, so it pans/zooms with the circuit (transform-origin
+                0 0 to match the SVG's own coordinate convention). */}
             <div
                 className="absolute inset-0"
-                style={{ backgroundImage: CANVAS_BACKGROUND_IMAGE, backgroundSize: CANVAS_BACKGROUND_SIZE }}
+                style={{
+                    backgroundImage: DOT_GRID_IMAGE, backgroundSize: DOT_GRID_SIZE,
+                    transform: worldTransform, transformOrigin: "0 0",
+                }}
             />
+            {/* Vignette is a fixed viewport decoration, deliberately NOT
+                transformed -- it should never drift as the user pans. */}
+            <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: VIGNETTE_IMAGE }} />
             <div className="absolute inset-0 pointer-events-none" style={{ boxShadow: CANVAS_VIGNETTE_SHADOW }} />
 
             <svg
@@ -141,33 +355,37 @@ export default function CircuitCanvas({ activeTool, onPlaced }: Props) {
                 width={size.w}
                 height={size.h}
                 className="absolute inset-0"
-                style={{ cursor: activeTool ? "crosshair" : "default", display: "block" }}
+                style={{ cursor, display: "block" }}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUp}
                 onMouseLeave={() => setHovered(null)}
+                onContextMenu={(e) => e.preventDefault()}
             >
-                {engineStore.engine.elmList.map((elm, i) => (
-                    <ElementSymbol
-                        key={i}
-                        elm={elm}
-                        selected={elm === selected}
-                        hovered={elm === hovered}
-                        onMouseDown={(e) => {
-                            if (activeTool) return;
-                            e.stopPropagation();
-                            engineStore.select(elm);
-                        }}
-                    />
-                ))}
+                <g transform={worldTransform}>
+                    {engineStore.engine.elmList.map((elm, i) => (
+                        <ElementSymbol
+                            key={i}
+                            elm={elm}
+                            selected={elm === selected}
+                            hovered={elm === hovered}
+                            onMouseDown={(e) => {
+                                if (activeTool) return;
+                                e.stopPropagation();
+                                const p = toWorldPoint(e);
+                                engineStore.select(elm);
+                                startMove(elm, p);
+                            }}
+                        />
+                    ))}
 
-                {dragStart.current && dragCurrent && (
-                    <line
-                        x1={dragStart.current.x} y1={dragStart.current.y}
-                        x2={dragCurrent.x} y2={dragCurrent.y}
-                        stroke={SELECT_COLOR} strokeWidth={1.5} strokeDasharray="4 4"
-                    />
-                )}
+                    {dragStart.current && dragCurrent && (
+                        <line
+                            x1={dragStart.current.x} y1={dragStart.current.y}
+                            x2={dragCurrent.x} y2={dragCurrent.y}
+                            stroke={SELECT_COLOR} strokeWidth={1.5 / viewport.scale} strokeDasharray={`${4 / viewport.scale} ${4 / viewport.scale}`}
+                        />
+                    )}
+                </g>
             </svg>
         </div>
     );

@@ -1,4 +1,4 @@
-import { CircuitElm, Stamper, Point, interpPoint } from './base';
+import { CircuitElm, Stamper, Point, interpPoint, escapeDumpText, unescapeDumpText } from './base';
 
 // Ported from PotElm.java. Three-terminal element: nodes[0]/nodes[1] are the
 // track ends, nodes[2] is the wiper. Modelled as two resistors meeting at the
@@ -31,7 +31,13 @@ export class PotElm extends CircuitElm {
         if (Array.isArray(params) && params.length > 0) {
             this.maxResistance = parseFloat(params[0]) || 1000;
             this.position = params.length > 1 ? parseFloat(params[1]) : 0.5;
-            if (params.length > 2) {
+            if (params.length === 3) {
+                // This port's own dump format: a single escaped token (see
+                // dumpTokens() below) -- safe for embedded spaces/newlines.
+                this.sliderText = unescapeDumpText(params[2]);
+            } else if (params.length > 3) {
+                // Legacy/hand-authored multi-token form: rejoin with single
+                // spaces (lossy for embedded newlines/repeated spaces).
                 this.sliderText = params.slice(2).join(" ");
             }
         }
@@ -52,6 +58,7 @@ export class PotElm extends CircuitElm {
 
     getPostCount() { return 3; }
     getDumpType() { return '174'; }
+    dumpTokens() { return [this.maxResistance, this.position, escapeDumpText(this.sliderText)]; }
     getXmlDumpType() { return "pt"; }
 
     calculateCurrent() {

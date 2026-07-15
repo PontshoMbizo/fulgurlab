@@ -36,6 +36,7 @@ export class AmmeterElm extends CircuitElm {
     }
 
     getDumpType() { return 370; }
+    dumpTokens() { return [this.meter, this.scale]; }
 
     setVoltageSource(n: number, vs: VoltageSource) {
         super.setVoltageSource(n, vs);

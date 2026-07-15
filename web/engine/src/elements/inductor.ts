@@ -105,6 +105,7 @@ export class InductorElm extends CircuitElm {
     }
 
     getDumpType() { return 'l'; }
+    dumpTokens() { return [this.ind.inductance, this.initialCurrent, this.ind.saturationCurrent]; }
 
     reset() {
         super.reset();

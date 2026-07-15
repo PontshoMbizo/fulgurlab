@@ -61,6 +61,12 @@ export class VoltageElm extends CircuitElm {
     }
 
     getDumpType() { return 'v'; }
+    // Order matches this class's own constructor's `params` reads exactly:
+    // waveform, frequency, maxVoltage, bias, phaseShift, dutyCycle. RailElm
+    // inherits this unchanged (same constructor, same fields); ClockElm
+    // overrides it below since its constructor's params shape is different
+    // (no waveform token -- it's fixed to WF_SQUARE).
+    dumpTokens() { return [this.waveform, this.frequency, this.maxVoltage, this.bias, this.phaseShift, this.dutyCycle]; }
     getVoltageSourceCount() { return 1; }
     isVoltageSource() { return true; }
 
@@ -205,4 +211,7 @@ export class ClockElm extends RailElm {
     }
 
     getDumpType() { return '164'; }
+    // No waveform token -- this constructor hardcodes WF_SQUARE and reads
+    // frequency/maxVoltage/bias/phaseShift/dutyCycle starting at params[0].
+    dumpTokens() { return [this.frequency, this.maxVoltage, this.bias, this.phaseShift, this.dutyCycle]; }
 }

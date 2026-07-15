@@ -5,6 +5,7 @@ import CircuitCanvas from "@/canvas/CircuitCanvas";
 import FloatingToolbar from "@/chrome/FloatingToolbar";
 import StatusCluster from "@/chrome/StatusCluster";
 import SpeedSlider from "@/chrome/SpeedSlider";
+import UndoRedoCluster from "@/chrome/UndoRedoCluster";
 import Inspector from "@/inspector/Inspector";
 import type { PaletteItem } from "@/palette/palette";
 
@@ -22,6 +23,7 @@ export default function Home() {
     <div className="h-screen w-screen relative overflow-hidden">
       <CircuitCanvas activeTool={activeTool} onPlaced={() => setActiveTool(null)} />
       <FloatingToolbar activeTool={activeTool} onSelect={setActiveTool} />
+      <UndoRedoCluster />
       <StatusCluster />
       <SpeedSlider />
       <Inspector />

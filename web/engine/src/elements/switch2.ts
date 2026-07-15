@@ -34,6 +34,9 @@ export class Switch2Elm extends SwitchElm {
     }
 
     getDumpType() { return 'S'; }
+    // Appends to SwitchElm's [position, momentary] -- link/throwCount are
+    // read from params[2]/params[3] by this class's own constructor.
+    dumpTokens() { return [...super.dumpTokens(), this.link, this.throwCount]; }
     getPostCount() { return 1 + this.throwCount; }
 
     static OPEN_HS = 16;
