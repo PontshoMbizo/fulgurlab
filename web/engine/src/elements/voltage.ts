@@ -1,4 +1,4 @@
-import { CircuitElm, Stamper } from './base';
+import { CircuitElm, Stamper, escapeDumpText, unescapeDumpText } from './base';
 import { CircuitNode, VoltageSource } from '../core/node';
 
 // Ported from VoltageElm.java. waveform constants and phase/duty-cycle handling
@@ -66,12 +66,32 @@ export class VoltageElm extends CircuitElm {
     // inherits this unchanged (same constructor, same fields); ClockElm
     // overrides it below since its constructor's params shape is different
     // (no waveform token -- it's fixed to WF_SQUARE).
-    dumpTokens() { return [this.waveform, this.frequency, this.maxVoltage, this.bias, this.phaseShift, this.dutyCycle]; }
+    dumpTokens(): (string | number | boolean)[] { return [this.waveform, this.frequency, this.maxVoltage, this.bias, this.phaseShift, this.dutyCycle]; }
     getVoltageSourceCount() { return 1; }
     isVoltageSource() { return true; }
 
+    // BUGFIX (found via dependent-source verification, see dependent_sources.ts):
+    // Java's VoltageElm.setVoltageSource() (:131-134) always calls
+    // v.setNodes(nodes[0], nodes[1]) -- this port's version silently didn't.
+    // Without it, VoltageSource.n1/n2 stay null and assignMatrix() (node.ts)
+    // falls all the way back to "elm's last post's matrix", which is null
+    // whenever that particular post happens to BE the literal ground node --
+    // producing a crash in stampMatrixVSNode/VSVS/NodeVS. Harmless for plain
+    // 2-post VoltageElm usage so far (both posts are always in the same
+    // matrix by default getMatrixConnection(), so this was a no-op change for
+    // every existing passing test) but a real latent gap for e.g. "a battery
+    // wired directly across ground" where ground happens to land on post[1].
+    // RailElm/ClockElm/VarRailElm/AntennaElm (getPostCount()=1) inherit this
+    // unchanged too: nodes[1] is out-of-bounds for them, same as it would be
+    // in the real GWT-compiled oracle (nodes[] is allocated to exactly
+    // getPostCount() length there as well, see CircuitElm.java:226-233) --
+    // both runtimes silently read back `undefined`/out-of-bounds as the
+    // *second* argument, and assignMatrix() only ever consults n1 (nodes[0],
+    // always their own real, non-ground post) before touching n2, so this
+    // is byte-faithful rather than a new fragility this port introduced.
     setVoltageSource(j: number, vs: VoltageSource) {
         this.voltSource = vs;
+        vs.setNodes(this.nodes[0], this.nodes[1]);
     }
 
     triangleFunc(x: number): number {
@@ -160,6 +180,17 @@ export class VoltageElm extends CircuitElm {
             this.noiseValue = (Math.random() * 2 - 1) * this.maxVoltage + this.bias;
         }
     }
+
+    // BUGFIX (see VoltageSource.current's comment in core/node.ts, and
+    // CircuitElm.setCurrent()'s comment in base.ts): this element's current
+    // flows entirely through its own voltage source -- there is no Ohm's-
+    // law-style derivation from volts[] the way a resistor/capacitor
+    // computes calculateCurrent(). No override needed here anymore: the
+    // base CircuitElm.setCurrent(vs, c) default (`current = c`) already
+    // gets dispatched correctly by CircuitEngine.applySolvedRightSide() for
+    // any element with exactly one voltage source, which this class always
+    // has (getVoltageSourceCount() returns 1 above) -- byte-faithful to
+    // Java, which doesn't override setCurrent() on VoltageElm either.
 }
 
 // Ported from RailElm.java: a one-post voltage source referenced to ground.
@@ -174,6 +205,24 @@ export class RailElm extends VoltageElm {
     getPostCount() { return 1; }
     hasGroundConnection(n1: number) { return true; }
     isRail() { return true; }
+    // BUGFIX (found this session via the new Power-group verification
+    // script, not by inspection): the base CircuitElm.getVoltageDiff()
+    // default is `volts[0] - volts[1]`, which is only correct for 2-post
+    // elements. RailElm overrides getPostCount() to 1, so `volts` is
+    // allocated with length 1 (see CircuitElm.allocNodes()) and volts[1] is
+    // always undefined -- every RailElm/ClockElm (and now VarRailElm/
+    // AntennaElm) instance has been returning NaN from getVoltageDiff()
+    // since this class was written. The circuit SOLVE itself was never
+    // affected (stamp()/doStep() call getVoltage(t) directly, not this
+    // method) -- only display/measurement consumers were: voltage-based
+    // symbol coloring (silently falls back to a 0V color via symbols.tsx's
+    // safeVoltageDiff() try/catch, which only catches thrown errors, not
+    // NaN) and, more importantly, Scope probe channels in "voltage" mode
+    // (EngineStore.recordScopeSamples() calls this directly) -- probing a
+    // Rail or Clock element would have recorded an all-NaN trace. Matches
+    // the same single-post override already applied to OutputElm/GroundElm/
+    // LabeledNodeElm/AmmeterElm (see base.ts's own getVoltageDiff() comment).
+    getVoltageDiff() { return this.volts[0]; }
 
     stamp(stamper: Stamper) {
         if (this.waveform === VoltageElm.WF_DC) {
@@ -214,4 +263,78 @@ export class ClockElm extends RailElm {
     // No waveform token -- this constructor hardcodes WF_SQUARE and reads
     // frequency/maxVoltage/bias/phaseShift/dutyCycle starting at params[0].
     dumpTokens() { return [this.frequency, this.maxVoltage, this.bias, this.phaseShift, this.dutyCycle]; }
+}
+
+// Ported from VarRailElm.java: a RailElm whose output voltage is directly
+// adjustable at runtime. Java drives this from a GWT Scrollbar widget docked
+// in a side panel, which recomputes `frequency` -- reused to mean "current
+// output voltage", a real field-naming quirk in the oracle, not a typo here
+// -- on every getVoltage() call. This port has no side-panel slider, so the
+// same field is exposed directly through the schema-driven edit dialog/
+// Inspector instead: same electrical behavior (an arbitrary constant output
+// between bias and maxVoltage), simpler mechanism, consistent with how the
+// rest of this port replaces GWT-specific widgets with React equivalents.
+export class VarRailElm extends RailElm {
+    sliderText = "Voltage";
+
+    constructor(x: number, y: number, x2: number, y2: number, flags: number, params?: string[]) {
+        super(x, y, x2, y2, flags, params);
+        this.waveform = VoltageElm.WF_VAR;
+        if (Array.isArray(params) && params.length > 6) {
+            this.sliderText = unescapeDumpText(params[6]);
+        } else {
+            // Fresh placement: Java's 2-arg constructor sets frequency =
+            // maxVoltage (i.e. the slider starts at 100%, output = max).
+            this.frequency = this.maxVoltage;
+        }
+    }
+
+    getDumpType() { return '172'; }
+    // Base RailElm/VoltageElm tokens (waveform is always WF_VAR here) plus
+    // this class's own appended sliderText, matching the constructor's read
+    // order above.
+    dumpTokens(): (string | number | boolean)[] {
+        return [...super.dumpTokens(), escapeDumpText(this.sliderText)];
+    }
+
+    // Java recomputes `frequency` from the live slider position on every
+    // call; here `frequency` IS the directly-editable value (schema-driven),
+    // so getVoltage() just returns it as-is -- same field, same meaning.
+    getVoltage(_t: number): number { return this.frequency; }
+}
+
+// Ported from AntennaElm.java: a RailElm preset to a synthesized "radio
+// noise" signal (three summed amplitude-modulated tones), per the Java
+// source's own label ("Antenna (amplified)") -- not a real antenna input.
+// Keeps its OWN dump identity ('A'), unlike ACRailElm/SquareRailElm/
+// NoiseElm, which all dump as plain RailElm via Java's getDumpClass()
+// override (see palette.ts -- those three need no dedicated TS class).
+export class AntennaElm extends RailElm {
+    fmphase = 0;
+
+    constructor(x: number, y: number, x2: number, y2: number, flags: number, _params?: string[]) {
+        super(x, y, x2, y2, flags, VoltageElm.WF_AC);
+        // Java's constructors (both the fresh 2-arg and the StringTokenizer
+        // one) force waveform = WF_AC unconditionally -- there's no dumped
+        // token for it, since dumpTokens() below never emits the base
+        // VoltageElm fields (they aren't meaningful for this element's own
+        // getVoltage() override).
+        this.waveform = VoltageElm.WF_AC;
+    }
+
+    getDumpType() { return 'A'; }
+    // fmphase is runtime-only (reset via the constructor, advanced by
+    // stepFinished()), never persisted -- just the base geometry+flags.
+    dumpTokens(): (string | number | boolean)[] { return []; }
+
+    getVoltage(t: number): number {
+        const fm = 3 * Math.sin(this.fmphase);
+        return Math.sin(2 * Math.PI * t * 3000) * (1.3 + Math.sin(2 * Math.PI * t * 12)) * 3 +
+            Math.sin(2 * Math.PI * t * 2710) * (1.3 + Math.sin(2 * Math.PI * t * 13)) * 3 +
+            Math.sin(2 * Math.PI * t * 2433) * (1.3 + Math.sin(2 * Math.PI * t * 14)) * 3 + fm;
+    }
+
+    stepFinished(stamper: Stamper) {
+        this.fmphase += 2 * Math.PI * (2200 + Math.sin(2 * Math.PI * stamper.t * 13) * 100) * stamper.timeStep;
+    }
 }

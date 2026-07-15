@@ -210,6 +210,22 @@ export abstract class CircuitElm {
     // default to ever get a working voltSource.
     setVoltageSource(j: number, vs: VoltageSource): void { this.voltSource = vs; }
 
+    // Ported from CircuitElm.java:255 (`void setCurrent(VoltageSource vs,
+    // double c) { current = c; }`) -- the REAL, general oracle mechanism for
+    // populating `.current` on any element that owns a voltage source.
+    // CircuitEngine.applySolvedRightSide() calls `vs.elm.setCurrent(vs, res)`
+    // for every voltage source right after solving (SimulationManager.java
+    // :1499-1503's `applySolvedRightSide`, byte-for-byte), so every element
+    // with exactly one voltage source gets correct current reporting for
+    // free via this default -- no per-class calculateCurrent() patch needed
+    // (that was an earlier, narrower fix this session; see VoltageSource
+    // .current's own comment in core/node.ts for the raw-value half of this,
+    // which elements with MULTIPLE voltage sources -- e.g. CCVSElm -- still
+    // read directly when they need to distinguish which VS solved which
+    // current, exactly like Java's CCVSElm/CCCSElm override this method to
+    // check pin/VS identity rather than blindly overwrite `current`).
+    setCurrent(vs: VoltageSource, c: number): void { this.current = c; }
+
     isWire(): boolean { return false; }
     isRemovableWire(): boolean { return false; }
     isGround(): boolean { return false; }

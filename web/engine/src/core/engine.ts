@@ -185,6 +185,26 @@ export class CircuitEngine implements Stamper {
                 cnl.elm.setNodeVoltage(cnl.num, cn.row > 0 ? m.nodeVoltages[cn.row - 1] : 0);
             }
         }
+        // BUGFIX: a voltage source's own branch current is itself one of the
+        // solved unknowns (row = nodeCount + index in the same combined
+        // vector `rightSide` holds after lu_solve_dense), but nothing read
+        // it back out before now -- see the VoltageSource.current field
+        // comment in node.ts. Byte-faithful port of Java's own
+        // applySolvedRightSide() (SimulationManager.java:1498-1504): store
+        // the raw solved value on the VoltageSource itself (used directly by
+        // elements that own more than one VS and need to tell them apart,
+        // e.g. CCVSElm reading its own controlVS.current), AND dispatch to
+        // vs.elm.setCurrent(vs, res) -- the general, per-element mechanism
+        // real elements use to decide what "their own" current means
+        // (usually just `current = c`, the CircuitElm.java:255 default, but
+        // multi-VS elements override it to pick the right one).
+        for (const vs of m.voltageSourceList) {
+            if (vs.row > 0) {
+                const res = m.rightSide[vs.row - 1];
+                vs.current = res;
+                vs.elm?.setCurrent(vs, res);
+            }
+        }
     }
 
     private calcWireCurrents() {

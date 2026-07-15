@@ -49,3 +49,11 @@ src/engine/_verify_undo.ts
 src/engine/_verify_saveload.ts
 src/inspector/_verify_schema.ts
 src/engine/_verify_scope.ts
+src/engine/_verify_sources.ts
+src/engine/_verify_power_palette.ts
+src/engine/_verify_vs_current.ts
+src/engine/_verify_dependent_sources.ts
+src/engine/_verify_analog_batch2.ts
+src/engine/_verify_analog_batch3.ts
+src/canvas/_verify_analog_symbols.tsx
+src/canvas/_dump_svg_tmp.tsx

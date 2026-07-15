@@ -34,6 +34,16 @@ export class VoltageSource {
     row: number = 0;
     n1: CircuitNode | null = null;
     n2: CircuitNode | null = null;
+    // BUGFIX (found while implementing current-controlled dependent sources,
+    // which need to read a sensed branch current): a voltage source's own
+    // branch current is one of the unknowns the matrix solves for (it lives
+    // at row `nodeCount + index` in the combined solution vector), but
+    // nothing previously read that solved value back out anywhere -- see
+    // CircuitEngine.applySolvedRightSide() in engine.ts, which now populates
+    // this field every sub-iteration. Elements with a single voltage source
+    // (VoltageElm/RailElm/ClockElm, AmmeterElm, OpAmpElm) previously had
+    // `.current` permanently stuck at 0 as a result.
+    current: number = 0;
 
     setNodes(n1: CircuitNode, n2: CircuitNode) {
         this.n1 = n1;

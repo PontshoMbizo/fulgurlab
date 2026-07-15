@@ -6,7 +6,15 @@ import { CircuitElm } from '../src/elements/base';
 import { ResistorElm } from '../src/elements/resistor';
 import { CapacitorElm } from '../src/elements/capacitor';
 import { InductorElm } from '../src/elements/inductor';
-import { VoltageElm, RailElm, ClockElm } from '../src/elements/voltage';
+import { VoltageElm, RailElm, ClockElm, VarRailElm, AntennaElm } from '../src/elements/voltage';
+import { SweepElm, AMElm, FMElm } from '../src/elements/sources';
+import { VCCSElm, VCVSElm, CCVSElm, CCCSElm } from '../src/elements/dependent_sources';
+import { InvertingSchmittElm, SchmittElm } from '../src/elements/schmitt';
+import { AnalogSwitchElm, AnalogSwitch2Elm } from '../src/elements/analog_switch';
+import { ComparatorElm } from '../src/elements/comparator';
+import { OTAElm } from '../src/elements/ota';
+import { TriStateElm } from '../src/elements/tristate';
+import { DelayBufferElm, TimeDelayRelayElm } from '../src/elements/delay';
 import { SwitchElm } from '../src/elements/switch';
 import { Switch2Elm } from '../src/elements/switch2';
 import { DiodeElm } from '../src/elements/diode';
@@ -275,6 +283,259 @@ describe('dump()/parse() round-trip -- one case per Tier-1 element', () => {
         expect(pot2.maxResistance).toBeCloseTo(2200);
         expect(pot2.position).toBeCloseTo(0.25);
         expect(pot2.sliderText).toBe('my slider');
+    });
+
+    // --- Power/Sources group ---------------------------------------------
+
+    it('RailElm as AC/Noise presets (ACRailElm/NoiseElm dump as plain RailElm)', () => {
+        const ac = new RailElm(0, 0, 0, 0, 0, ['1', '40', '169.7']);
+        const ac2 = roundTrip(ac) as RailElm;
+        expect(ac2.getDumpType()).toBe('R');
+        expect(ac2.waveform).toBe(VoltageElm.WF_AC);
+        expect(ac2.maxVoltage).toBeCloseTo(169.7);
+
+        const noise = new RailElm(0, 0, 0, 0, 0, ['6', '40', '5']);
+        const noise2 = roundTrip(noise) as RailElm;
+        expect(noise2.waveform).toBe(VoltageElm.WF_NOISE);
+    });
+
+    it('VarRailElm (forces WF_VAR; sliderText appended after base tokens)', () => {
+        const vr = new VarRailElm(0, 0, 0, 0, 0, ['0', '40', '12', '-2', '0', '0.5', 'my label']);
+        expect(vr.waveform).toBe(VoltageElm.WF_VAR);
+        expect(vr.bias).toBeCloseTo(-2);
+        expect(vr.maxVoltage).toBeCloseTo(12);
+        const vr2 = roundTrip(vr) as VarRailElm;
+        expect(vr2.getDumpType()).toBe('172');
+        expect(vr2.waveform).toBe(VoltageElm.WF_VAR);
+        expect(vr2.bias).toBeCloseTo(-2);
+        expect(vr2.maxVoltage).toBeCloseTo(12);
+        expect(vr2.sliderText).toBe('my label');
+        expect(vr2.getVoltage(0)).toBeCloseTo(vr2.frequency);
+    });
+
+    it('VarRailElm fresh placement defaults frequency (output) to maxVoltage', () => {
+        const vr = new VarRailElm(0, 0, 0, 0, 0, []);
+        expect(vr.frequency).toBeCloseTo(vr.maxVoltage);
+        expect(vr.sliderText).toBe('Voltage');
+    });
+
+    it('AntennaElm (own dump id "A", no extra tokens, custom getVoltage)', () => {
+        const ant = new AntennaElm(0, 0, 0, 0, 0);
+        expect(ant.getDumpType()).toBe('A');
+        expect(ant.waveform).toBe(VoltageElm.WF_AC);
+        const ant2 = roundTrip(ant) as AntennaElm;
+        expect(ant2.getDumpType()).toBe('A');
+        // getVoltage() is a deterministic function of t (no randomness), so
+        // both instances must agree exactly at a given t.
+        expect(ant2.getVoltage(0.01)).toBeCloseTo(ant.getVoltage(0.01), 10);
+    });
+
+    it('SweepElm (minF/maxF/maxV/sweepTime)', () => {
+        const sw = new SweepElm(0, 0, 0, 0, 0, ['30', '3000', '8', '0.25']);
+        const sw2 = roundTrip(sw) as SweepElm;
+        expect(sw2.getDumpType()).toBe(170);
+        expect(sw2.minF).toBeCloseTo(30);
+        expect(sw2.maxF).toBeCloseTo(3000);
+        expect(sw2.maxV).toBeCloseTo(8);
+        expect(sw2.sweepTime).toBeCloseTo(0.25);
+    });
+
+    it('SweepElm fresh placement defaults to FLAG_BIDIR', () => {
+        const sw = new SweepElm(0, 0, 0, 0, 0, []);
+        expect((sw.flags & SweepElm.FLAG_BIDIR) !== 0).toBe(true);
+        expect(sw.minF).toBeCloseTo(20);
+        expect(sw.maxF).toBeCloseTo(4000);
+    });
+
+    it('AMElm (carrierfreq, signalfreq, maxVoltage)', () => {
+        const am = new AMElm(0, 0, 0, 0, 0, ['1200', '30', '6']);
+        const am2 = roundTrip(am) as AMElm;
+        expect(am2.getDumpType()).toBe(200);
+        expect(am2.carrierfreq).toBeCloseTo(1200);
+        expect(am2.signalfreq).toBeCloseTo(30);
+        expect(am2.maxVoltage).toBeCloseTo(6);
+    });
+
+    it('FMElm (carrierfreq, signalfreq, maxVoltage, deviation)', () => {
+        const fm = new FMElm(0, 0, 0, 0, 0, ['900', '35', '7', '250']);
+        const fm2 = roundTrip(fm) as FMElm;
+        expect(fm2.getDumpType()).toBe(201);
+        expect(fm2.carrierfreq).toBeCloseTo(900);
+        expect(fm2.signalfreq).toBeCloseTo(35);
+        expect(fm2.maxVoltage).toBeCloseTo(7);
+        expect(fm2.deviation).toBeCloseTo(250);
+    });
+
+    it('VCCSElm (gain token; 4-post geometry all distinct/finite)', () => {
+        const e = new VCCSElm(0, 0, 100, 0, 0, ['0.025']);
+        const e2 = roundTrip(e) as VCCSElm;
+        expect(e2.getDumpType()).toBe(213);
+        expect(e2.gain).toBeCloseTo(0.025);
+        e2.preStamp();
+        const posts = [0, 1, 2, 3].map(n => e2.getPost(n));
+        expect(posts.every(p => p && Number.isFinite(p.x) && Number.isFinite(p.y))).toBe(true);
+        // All 4 posts must be at distinct coordinates -- this is exactly the
+        // geometry bug this session's own draft caught before it shipped
+        // (the base CircuitElm.getPost() default returns null for j>=2).
+        const keys = new Set(posts.map(p => `${p!.x},${p!.y}`));
+        expect(keys.size).toBe(4);
+    });
+
+    it('VCVSElm (gain token; is a voltage source)', () => {
+        const e = new VCVSElm(0, 0, 100, 0, 0, ['3']);
+        const e2 = roundTrip(e) as VCVSElm;
+        expect(e2.getDumpType()).toBe(212);
+        expect(e2.gain).toBeCloseTo(3);
+        expect(e2.isVoltageSource()).toBe(true);
+        expect(e2.getVoltageSourceCount()).toBe(1);
+    });
+
+    it('CCVSElm (gain token; needs 2 voltage sources)', () => {
+        const e = new CCVSElm(0, 0, 100, 0, 0, ['500']);
+        const e2 = roundTrip(e) as CCVSElm;
+        expect(e2.getDumpType()).toBe(214);
+        expect(e2.gain).toBeCloseTo(500);
+        expect(e2.getVoltageSourceCount()).toBe(2);
+    });
+
+    it('CCCSElm (gain token; needs 1 (control-sense) voltage source)', () => {
+        const e = new CCCSElm(0, 0, 100, 0, 0, ['20']);
+        const e2 = roundTrip(e) as CCCSElm;
+        expect(e2.getDumpType()).toBe(215);
+        expect(e2.gain).toBeCloseTo(20);
+        expect(e2.getVoltageSourceCount()).toBe(1);
+    });
+
+    it('InvertingSchmittElm (5 tokens: slewRate/lowerTrigger/upperTrigger/logicOnLevel/logicOffLevel)', () => {
+        const e = new InvertingSchmittElm(0, 0, 100, 0, 0, ['0.8', '1.2', '3.8', '4.5', '0.2']);
+        const e2 = roundTrip(e) as InvertingSchmittElm;
+        expect(e2.getDumpType()).toBe(183);
+        expect(e2.slewRate).toBeCloseTo(0.8);
+        expect(e2.lowerTrigger).toBeCloseTo(1.2);
+        expect(e2.upperTrigger).toBeCloseTo(3.8);
+        expect(e2.logicOnLevel).toBeCloseTo(4.5);
+        expect(e2.logicOffLevel).toBeCloseTo(0.2);
+    });
+
+    it('SchmittElm (same token shape as its parent, own dump id)', () => {
+        const e = new SchmittElm(0, 0, 100, 0, 0, ['0.5', '1.66', '3.33', '5', '0']);
+        const e2 = roundTrip(e) as SchmittElm;
+        expect(e2.getDumpType()).toBe(182);
+        expect(e2.upperTrigger).toBeCloseTo(3.33);
+    });
+
+    it('AnalogSwitchElm (r_on/r_off/threshold tokens; 3-post geometry all distinct/finite)', () => {
+        const e = new AnalogSwitchElm(0, 0, 100, 0, 0, ['15', '5e9', '3']);
+        const e2 = roundTrip(e) as AnalogSwitchElm;
+        expect(e2.getDumpType()).toBe(159);
+        expect(e2.r_on).toBeCloseTo(15);
+        expect(e2.r_off).toBeCloseTo(5e9);
+        expect(e2.threshold).toBeCloseTo(3);
+        e2.preStamp();
+        const posts = [0, 1, 2].map(n => e2.getPost(n));
+        expect(posts.every(p => p && Number.isFinite(p.x) && Number.isFinite(p.y))).toBe(true);
+        expect(new Set(posts.map(p => `${p!.x},${p!.y}`)).size).toBe(3);
+    });
+
+    it('AnalogSwitchElm fresh placement defaults to FLAG_PULLDOWN set', () => {
+        const e = new AnalogSwitchElm(0, 0, 100, 0, 0, []);
+        expect(e.needsPulldown()).toBe(true);
+    });
+
+    it('AnalogSwitch2Elm (4-post geometry all distinct/finite)', () => {
+        const e = new AnalogSwitch2Elm(0, 0, 100, 0, 0, ['20', '1e10', '2.5']);
+        const e2 = roundTrip(e) as AnalogSwitch2Elm;
+        expect(e2.getDumpType()).toBe(160);
+        e2.preStamp();
+        const posts = [0, 1, 2, 3].map(n => e2.getPost(n));
+        expect(posts.every(p => p && Number.isFinite(p.x) && Number.isFinite(p.y))).toBe(true);
+        expect(new Set(posts.map(p => `${p!.x},${p!.y}`)).size).toBe(4);
+    });
+
+    it('ComparatorElm (no tokens; 3-post geometry, 1 internal node)', () => {
+        const e = new ComparatorElm(0, 0, 100, 0, 0, []);
+        const e2 = roundTrip(e) as ComparatorElm;
+        expect(e2.getDumpType()).toBe(401);
+        expect(e2.getInternalNodeCount()).toBe(1);
+        e2.preStamp();
+        const posts = [0, 1, 2].map(n => e2.getPost(n));
+        expect(posts.every(p => p && Number.isFinite(p.x) && Number.isFinite(p.y))).toBe(true);
+        expect(new Set(posts.map(p => `${p!.x},${p!.y}`)).size).toBe(3);
+    });
+
+    it('OTAElm (no tokens; 4-post geometry all distinct/finite)', () => {
+        const e = new OTAElm(0, 0, 100, 0, 0, []);
+        const e2 = roundTrip(e) as OTAElm;
+        expect(e2.getDumpType()).toBe(402);
+        e2.preStamp();
+        const posts = [0, 1, 2, 3].map(n => e2.getPost(n));
+        expect(posts.every(p => p && Number.isFinite(p.x) && Number.isFinite(p.y))).toBe(true);
+        expect(new Set(posts.map(p => `${p!.x},${p!.y}`)).size).toBe(4);
+    });
+
+    it('TriStateElm (r_on/r_off/r_off_ground/highVoltage tokens; 3-post geometry, 1 internal node)', () => {
+        const e = new TriStateElm(0, 0, 100, 0, 0, ['0.2', '1e9', '2e8', '3.3']);
+        const e2 = roundTrip(e) as TriStateElm;
+        expect(e2.getDumpType()).toBe(180);
+        expect(e2.r_on).toBeCloseTo(0.2);
+        expect(e2.r_off).toBeCloseTo(1e9);
+        expect(e2.r_off_ground).toBeCloseTo(2e8);
+        expect(e2.highVoltage).toBeCloseTo(3.3);
+        expect(e2.getInternalNodeCount()).toBe(1);
+        e2.preStamp();
+        const posts = [0, 1, 2].map(n => e2.getPost(n));
+        expect(posts.every(p => p && Number.isFinite(p.x) && Number.isFinite(p.y))).toBe(true);
+        expect(new Set(posts.map(p => `${p!.x},${p!.y}`)).size).toBe(3);
+    });
+
+    it('DelayBufferElm (delay/threshold/highVoltage tokens)', () => {
+        const e = new DelayBufferElm(0, 0, 100, 0, 0, ['0.002', '1.65', '3.3']);
+        const e2 = roundTrip(e) as DelayBufferElm;
+        expect(e2.getDumpType()).toBe(422);
+        expect(e2.delay).toBeCloseTo(0.002);
+        expect(e2.threshold).toBeCloseTo(1.65);
+        expect(e2.highVoltage).toBeCloseTo(3.3);
+        expect(e2.getVoltageSourceCount()).toBe(1);
+    });
+
+    it('TimeDelayRelayElm (onDelay/offDelay/onResistance/offResistance tokens; 4-post geometry all distinct/finite)', () => {
+        const e = new TimeDelayRelayElm(0, 0, 100, 0, 0, ['2', '1', '0.5', '2e6']);
+        const e2 = roundTrip(e) as TimeDelayRelayElm;
+        expect(e2.getDumpType()).toBe(414);
+        expect(e2.onDelay).toBeCloseTo(2);
+        expect(e2.offDelay).toBeCloseTo(1);
+        expect(e2.onResistance).toBeCloseTo(0.5);
+        expect(e2.offResistance).toBeCloseTo(2e6);
+        e2.preStamp();
+        const posts = [0, 1, 2, 3].map(n => e2.getPost(n));
+        expect(posts.every(p => p && Number.isFinite(p.x) && Number.isFinite(p.y))).toBe(true);
+        expect(new Set(posts.map(p => `${p!.x},${p!.y}`)).size).toBe(4);
+    });
+
+    // Regression test for a bug this session's verification script caught:
+    // RailElm (and ClockElm/VarRailElm/AntennaElm, which all inherit it) is
+    // single-post (getPostCount()==1), so `volts` only ever has ONE entry --
+    // the inherited base CircuitElm.getVoltageDiff() default (`volts[0] -
+    // volts[1]`) silently returned NaN for every rail-family element. Locked
+    // in here so it can't quietly come back if RailElm's getVoltageDiff()
+    // override is ever removed/refactored away.
+    it('RailElm family: getVoltageDiff() never NaNs (single-post override)', () => {
+        const rail = new RailElm(0, 0, 0, 0, 0, 0);
+        rail.volts = [3.3];
+        expect(Number.isFinite(rail.getVoltageDiff())).toBe(true);
+        expect(rail.getVoltageDiff()).toBeCloseTo(3.3);
+
+        const clk = new ClockElm(0, 0, 0, 0, 0, []);
+        clk.volts = [2.5];
+        expect(Number.isFinite(clk.getVoltageDiff())).toBe(true);
+
+        const vr = new VarRailElm(0, 0, 0, 0, 0, []);
+        vr.volts = [5];
+        expect(Number.isFinite(vr.getVoltageDiff())).toBe(true);
+
+        const ant = new AntennaElm(0, 0, 0, 0, 0);
+        ant.volts = [1.2];
+        expect(Number.isFinite(ant.getVoltageDiff())).toBe(true);
     });
 });
 

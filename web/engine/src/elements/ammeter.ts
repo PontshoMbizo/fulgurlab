@@ -56,6 +56,21 @@ export class AmmeterElm extends CircuitElm {
     getPower() { return 0; }
     getVoltageDiff() { return this.volts[0]; }
 
+    // BUGFIX (see CircuitElm.setCurrent()'s comment in base.ts): an ammeter
+    // senses current via a 0V voltage source, so its own `current` is
+    // entirely the solved branch current of that source. No override needed
+    // here: the base setCurrent(vs, c) default (`current = c`) is dispatched
+    // by CircuitEngine.applySolvedRightSide() DURING the solve (inside
+    // stepOnce()'s subiteration loop) -- well before stepFinished() runs
+    // below, which is important: stepFinished() reads `this.current` for
+    // its min/max/rms stats, and an EARLIER version of this fix used a
+    // calculateCurrent() override instead, which only runs later via
+    // calcWireCurrents() -- AFTER stepFinished() in the same step. That
+    // ordering meant these stats were always one step stale relative to
+    // what had actually just been solved, even though the underlying
+    // current value was otherwise correct. Relying on the setCurrent()
+    // dispatch instead fixes both problems (populated at all + fresh in
+    // time for stepFinished()) with the SAME mechanism Java itself uses.
     stepFinished() {
         this.count++;
         this.total += this.current * this.current;

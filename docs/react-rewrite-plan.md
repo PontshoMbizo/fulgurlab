@@ -1235,6 +1235,166 @@ the has-data and no-data code paths) and the axis math (confirmed the tick
 labels and trace's `xOf`/`yOf` mapping agree on which direction is "up").
 Worth Pontsho eyeballing the actual plot rendering once run locally.
 
+### 2026-07-15 session note, continued a fourth time — Power/Sources group + Analog Active Building Blocks group
+
+Pontsho asked to "add all power and analogue (base) components." Read as
+completing two of `Menus.java`'s remaining menu categories end-to-end:
+"Inputs and Sources" (this port's existing "Sources" palette category) and
+"Active Building Blocks" (this port's "Active" category, already seeded with
+`OpAmpElm`).
+
+**Power/Sources group.** Read `SweepElm.java`/`AMElm.java`/`FMElm.java`
+against the already-ported `VoltageElm`/`RailElm` before writing anything.
+Added `SweepElm` (frequency-swept source, dump 170), `AMElm`/`FMElm`
+(modulated sources, dumps 200/201), and `VarRailElm`/`AntennaElm` (dumps
+172/A). `ACRailElm`/`SquareRailElm`/`NoiseElm` needed no dedicated classes at
+all — Java's own `getDumpClass()` override makes all three dump/reload as
+plain `RailElm`, so they're palette-only presets (a different default
+waveform token), the same pattern `DC`/`AC Voltage Source` already used for
+plain `VoltageElm`. All five wired into `palette.ts` (Sources category),
+`symbols.tsx` (`CircleGlyphBody` for Sweep/AM/FM's circle-with-glyph
+convention, `BatteryBody` presets for the rest), and `schema.ts`.
+
+**Analog Active Building Blocks group, batch 1 (op-amp variants + dependent
+sources).** `OpAmpSwapElm` needed only a palette preset (`FLAG_SWAP=1`,
+dumps as plain `OpAmpElm` via the same `getDumpClass()` pattern as the
+Power-group presets above). `VCCSElm`/`VCVSElm`/`CCVSElm`/`CCCSElm`
+(dumps 213/212/214/215) are a **documented simplification**: Java's real
+versions extend `ChipElm` and evaluate an arbitrary user-typed expression via
+`ExprParser` with a variable pin count — infrastructure on the same scale as
+`CompositeElm`/subcircuits, already out of scope (see Tier 2 backlog below).
+Implemented instead as the classic fixed-2-terminal, fixed-gain dependent
+source every intro circuits course teaches (SPICE's E/G/F/H elements) — a
+real, byte-correct implementation of the common numeric-gain case, not an
+approximation of the general one.
+
+While wiring these up, found and fixed two real bugs. First,
+`VoltageElm.setVoltageSource()` (and by inheritance `RailElm`/`ClockElm`)
+never called `vs.setNodes(...)`, so `VoltageSource.assignMatrix()`
+(`core/node.ts`) silently fell back to "this element's last post's matrix" —
+null whenever that post was directly grounded, a real and reachable crash,
+not a corner case (`VCVSElm` had the identical gap for its own output pins).
+Second, and more architecturally significant: an earlier narrower fix for
+"voltage-source elements never report their branch current" had patched
+`calculateCurrent()` on each affected class individually. Designing
+`InvertingSchmittElm` surfaced the actual general Java mechanism instead —
+`SimulationManager.applySolvedRightSide()` calls `vs.elm.setCurrent(vs, res)`
+for every voltage source right after solving, with `CircuitElm.setCurrent()`
+defaulting to `this.current = c`. Refactored to dispatch through this
+uniformly (`CircuitEngine.applySolvedRightSide()` now calls
+`vs.elm?.setCurrent(vs, res)`), removing the per-class overrides it
+replaced. This also fixed a genuine, previously-unnoticed timing bug:
+`AmmeterElm.stepFinished()`'s min/max/rms stats were one step stale, because
+`calculateCurrent()` only runs later via `calcWireCurrents()` — after
+`stepFinished()` in the same frame — while `setCurrent()` dispatch happens
+earlier, inside `stepOnce()`'s own subiteration loop.
+
+**Batch 2 (switches, Schmitt triggers, comparator, OTA).**
+`InvertingSchmittElm`/`SchmittElm` (dumps 183/182) ported directly, including
+a real, deliberate Java behavioral difference preserved rather than
+"fixed": `SchmittElm` captures its slew-rate reference voltage once per
+step via `startIteration()`, while its parent re-reads it fresh on every
+sub-iteration. `AnalogSwitchElm`/`AnalogSwitch2Elm` (dumps 159/160) ported
+directly (CD4066-style analog switches). `ComparatorElm` (dump 401) and
+`OTAElm` (dump 402) are the session's most involved simplifications: both
+extend `CompositeElm` in Java (internal multi-element subcircuits), and
+subcircuit infrastructure is explicitly out of scope. Rather than skip them,
+their real internal models were reverse-engineered from the Java source
+(`CompositeElm.modelExternalNodes[i]` maps external post `i` to an internal
+node number — confirmed by reading `compNodeList.add(...)` directly) and
+reimplemented as standalone elements with an internal node, using the same
+saturating-output technique `OpAmpElm.doStep()` already established.
+`ComparatorElm`'s reverse-engineered behavior is a classic open-drain output
+(sinks when + > -, floats otherwise, like an LM393) — confirmed via the
+verification script, not assumed. `OTAElm` uses the textbook
+`Iout = gm*(Vin+ - Vin-)`, `gm = Iabc/(2*VT)` equation in place of Java's
+17-transistor netlist — the same equation the LM13700 datasheet itself gives
+for the simplified application view. One real sign bug was caught and fixed
+here: the OTA's output stamp had `+gm`/`-gm` reversed, produced a
+negative `Vout` for a positive `Vin`; corrected by re-deriving the sign from
+the already-verified `VCCSElm` pattern.
+
+Both `ComparatorElm` and `OTAElm` also needed a `getConnection()` /
+`getMatrixConnection()` split — two separate overridable methods (default:
+the latter delegates to the former). `getConnection()` feeds
+`findUnconnectedNodes()`'s dangling-node safety net; `getMatrixConnection()`
+feeds `calculateClosures()`'s matrix partitioning. Both elements have no
+direct DC path from input to output (`getConnection()` → false) but need
+their internal node forced into the same solver matrix anyway, since a
+voltage source's aux equation cross-references it (`getMatrixConnection()`
+→ true) — confirmed as the real `OpAmpElm.java` pattern and reused here.
+
+**Batch 3 (tri-state buffer, delay buffer, time-delay relay).** `TriStateElm`
+(dump 180) is single-bit only — Java's version supports an arbitrary
+`busWidth` (parallel buffers, variable post count), the same class of
+infrastructure already deferred elsewhere (e.g. `AnalogMuxElm`); this port
+implements the busWidth=1 case exactly, not an approximation of the general
+one. `DelayBufferElm` (dump 422, a propagation-delay/deglitch buffer, not a
+shift-register-style delay line) and `TimeDelayRelayElm` (dump 414, a 4-pin
+relay model) round out the batch — `TimeDelayRelayElm` is ported as a direct
+`CircuitElm` subclass with its own fixed 4-pin geometry, since Java only
+uses `ChipElm` there for generic box rendering, not variable pin count (same
+"skip ChipElm when the pin count is fixed" call the Power group's own
+elements already made). **Current conveyors (`CC2Elm`/`CC2NegElm`) remain
+explicitly excluded**, per this project's own earlier scoping decision — not
+attempted this session.
+
+**The recurring bug class this whole arc, caught independently four separate
+times** (`dependent_sources.ts`; then `AnalogSwitchElm`/`AnalogSwitch2Elm`/
+`ComparatorElm`/`OTAElm` simultaneously; then again in the symbol-drawing
+code below): any element with more than 2 posts, or posts beyond
+`x,y`/`x2,y2`, must override **both** `setPoints()` (computing extra post
+positions, always calling `super.setPoints()` first) and `getPost(n)`
+(exposing them) — the base class's default silently returns `null` for post
+index ≥2. Documented explicitly in code comments each time to try to break
+the pattern for future work.
+
+**Wiring into `palette.ts`/`symbols.tsx`/`schema.ts`.** All 13 batch 1-3
+dump types added to the palette's Active category (plus the 5 already-wired
+Power-group types), each with a hand-authored SVG symbol body and, where
+`dumpTokens()` unconditionally emits fields (the same scoping rule
+`schema.ts`'s header already established), an edit-dialog schema entry.
+`ComparatorElm`/`OTAElm` have no schema entry at all, matching the existing
+`OpAmpElm` precedent — no dump tokens exist to safely bind editable fields
+to. Authoring the new symbol bodies surfaced a real, general sign-convention
+bug: `interpPoint(a,b,f,g)`/`interpPoint2(a,b,f,g)` map to **local y = -g**,
+not +g — confirmed via the full rotation-matrix derivation (`world = point1
++ f*(point2-point1) + (Y/dn)*(-dy,dx)` for a local point `(f*dn, Y)`,
+compared against `interpPoint`'s own perpendicular-offset formula) and
+cross-checked against `OpAmpBody`'s pre-existing, already-correct `in1p`/
+`in2p` convention. Five of the thirteen new bodies had this backwards —
+`DependentSourceBody` (+/- labels swapped), `AnalogSwitchBody` and
+`TriStateBody` (control-pin stub drawn disconnected from the real dot),
+`AnalogSwitch2Body` (switch arm swung to the wrong throw, control stub
+disconnected), `OTABody` (the Iabc bias stub was a degenerate zero-length
+line on top of the same sign error), and `TimeDelayRelayBody` (the coil-box
+and switch-arm rows were drawn swapped) — all found by rendering every new
+symbol via `react-dom/server` and diffing each hand-authored lead against
+the element's own real `getPost()` coordinates, then fixed and documented
+inline at each corrected body so the sign rule can't silently regress again.
+
+**Verification.** `web/engine`: `tsc --noEmit` clean throughout; `vitest
+run` grew from 55 to 93 passing (38 new: dump-roundtrip coverage for every
+Power/Analog dump type, plus numeric regression tests per batch — Schmitt
+hysteresis, switch polarity, comparator open-drain behavior, OTA gm
+equation, tri-state enable polarity, delay-buffer propagation timing,
+relay on/off-delay timing). `web/app`: `tsc --noEmit` and `eslint` both
+clean. Four headless scratch scripts (`_verify_dependent_sources.ts`,
+`_verify_analog_batch2.ts`, `_verify_analog_batch3.ts`,
+`_verify_analog_symbols.ts`, plus a throwaway coordinate-dump companion),
+bundled with esbuild and run via plain `node`, then neutered to `export {}`
+with a summary of what was found/fixed, per this project's established
+scratch-file pattern. Several test-script bugs were caught and corrected
+along the way without misattributing them to the implementation: a
+singular-matrix false alarm from a floating, ground-less control branch in
+a hand-built CCVS/CCCS test circuit; a wrong assumed switch polarity,
+corrected by re-reading `AnalogSwitchElm.java`'s literal `doStep()`; and an
+inverted voltage-divider formula in a `TimeDelayRelayElm` test assertion
+(computed the drop across the relay's own resistance instead of the load's
+share of it). `next dev --turbopack` + curl smoke test: HTTP 200, clean
+Turbopack compile, no error markers, full app chrome present in the SSR
+shell.
+
 ---
 
 ## Appendix A — Tables
@@ -1275,21 +1435,38 @@ Worth Pontsho eyeballing the actual plot rendering once run locally.
 | 35 | 7-segment | SevenSegElm | 157 | P3 |
 | 36 | Custom logic | CustomLogicElm | 208 | P3 |
 | 37 | **External chip (FPGA/MCU)** | ExtChipElm | 460 | P4 |
-| 38 | Sweep (freq source) | SweepElm | 170 | P7 triage |
-| 39 | Var. voltage rail | VarRailElm | 172 | P7 triage |
-| 40 | Tri-state buffer | TriStateElm | 180 | P7 triage |
+| 38 | Sweep (freq source) | SweepElm | 170 | done (2026-07-15) |
+| 39 | Var. voltage rail | VarRailElm | 172 | done (2026-07-15) |
+| 40 | Tri-state buffer | TriStateElm | 180 | done (2026-07-15, single-bit only) |
+| 41 | Antenna (AC rail, own dump id) | AntennaElm | A | done (2026-07-15) |
+| 42 | AM/FM sources | AMElm / FMElm | 200 / 201 | done (2026-07-15) |
+| 43 | Op-amp (+ on top) preset | OpAmpSwapElm | a (preset) | done (2026-07-15) |
+| 44 | VCCS/VCVS/CCVS/CCCS (fixed-gain) | *Elm (dependent_sources.ts) | 213/212/214/215 | done (2026-07-15, simplified — see session note) |
+| 45 | Schmitt trigger (+ inverting) | SchmittElm / InvertingSchmittElm | 182 / 183 | done (2026-07-15) |
+| 46 | Analog switch (+ SPDT) | AnalogSwitchElm / AnalogSwitch2Elm | 159 / 160 | done (2026-07-15) |
+| 47 | Comparator | ComparatorElm | 401 | done (2026-07-15, standalone reimpl. — see session note) |
+| 48 | OTA (transconductance amp) | OTAElm | 402 | done (2026-07-15, simplified gm equation — see session note) |
+| 49 | Delay buffer | DelayBufferElm | 422 | done (2026-07-15) |
+| 50 | Time-delay relay | TimeDelayRelayElm | 414 | done (2026-07-15) |
 
 (Verify each dump id against `getDumpType()` in the Java file when porting — the
 letters/ids above are from the Java sources; treat the Java as authoritative.)
 
 ### A.2 Tier 2 (post-switchover backlog, roughly ordered by scope.io value)
 
-Transformer, TappedTransformer, Relay, 555 Timer, Comparator/Schmitt pair, ADC, DAC,
+Transformer, TappedTransformer, Relay, 555 Timer, ADC, DAC,
 Counter(+w/load), Ring counter, Latch, SIPO/PISO shift registers, Mux/Demux,
 SRAM/ROM, Full/Half adder, Bus transceiver/splitter, **CustomCompositeElm
 (subcircuits — biggest single item)**, Crystal, PolarCapacitor, JFET, SCR, Triac,
-Optocoupler, CCVS/CCCS/VCVS/VCCS, TransLine, Memristor, TunnelDiode, Varactor,
-Monostable, DelayBuffer, AM/FM sources, Antenna, Sequence generator.
+Optocoupler, **current conveyors (CC2Elm/CC2NegElm — explicitly excluded,
+see 2026-07-15 session note)**, TransLine, Memristor, TunnelDiode, Varactor,
+Monostable, Sequence generator.
+
+(Comparator/Schmitt pair, CCVS/CCCS/VCVS/VCCS, DelayBuffer, AM/FM sources, and
+Antenna all shipped 2026-07-15 — see A.1 above and the session note. `ChipElm`
+and `CompositeElm`/subcircuit infrastructure itself remains out of scope;
+elements that need them are either reimplemented functionally as standalone
+classes when feasible (done for Comparator/OTA) or stay deferred.)
 
 Tier 3 = the remaining long tail (audio I/O, motors, spark gap, unijunction, diac,
 Darlington, 14/16-seg, data recorder, …) — on demand.

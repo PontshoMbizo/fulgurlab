@@ -152,6 +152,69 @@ export const FIELD_SCHEMA: Record<string, FieldSchema[]> = {
         { key: "position", label: "Wiper Position", type: "number", min: 0, max: 1, step: 0.01 },
         { key: "sliderText", label: "Slider Label", type: "text" },
     ],
+    // Power/Sources group. AntennaElm ('A') has no entry -- dumpTokens()
+    // emits nothing (fmphase is runtime-only), so it falls back to the
+    // Inspector's "no editable fields" message, same as WireElm/BoxElm.
+    "172": [
+        { key: "bias", label: "Min Voltage", type: "number", unit: "V" },
+        { key: "maxVoltage", label: "Max Voltage", type: "number", unit: "V" },
+        { key: "frequency", label: "Current Value", type: "number", unit: "V" },
+        { key: "sliderText", label: "Slider Label", type: "text" },
+    ],
+    "170": [
+        { key: "minF", label: "Min Frequency", type: "number", unit: "Hz" },
+        { key: "maxF", label: "Max Frequency", type: "number", unit: "Hz" },
+        { key: "maxV", label: "Max Voltage", type: "number", unit: "V" },
+        { key: "sweepTime", label: "Sweep Time", type: "number", unit: "s" },
+    ],
+    "200": [
+        { key: "carrierfreq", label: "Carrier Frequency", type: "number", unit: "Hz" },
+        { key: "signalfreq", label: "Signal Frequency", type: "number", unit: "Hz" },
+        { key: "maxVoltage", label: "Max Voltage", type: "number", unit: "V" },
+    ],
+    "201": [
+        { key: "carrierfreq", label: "Carrier Frequency", type: "number", unit: "Hz" },
+        { key: "signalfreq", label: "Signal Frequency", type: "number", unit: "Hz" },
+        { key: "maxVoltage", label: "Max Voltage", type: "number", unit: "V" },
+        { key: "deviation", label: "Deviation", type: "number", unit: "Hz" },
+    ],
+    // Analog Active Building Blocks group. ComparatorElm ('401') and OTAElm
+    // ('402') have no entries -- like OpAmpElm, their dumpTokens() always
+    // returns [] in this port (no editable fields exist to dump/reload), so
+    // they fall back to the Inspector's "no editable fields" message.
+    "213": [{ key: "gain", label: "Gain (gm)", type: "number", unit: "A/V" }],
+    "212": [{ key: "gain", label: "Gain (μ)", type: "number" }],
+    "214": [{ key: "gain", label: "Gain (transresistance)", type: "number", unit: "Ω" }],
+    "215": [{ key: "gain", label: "Gain (β)", type: "number" }],
+    "183": [
+        { key: "slewRate", label: "Slew Rate", type: "number", unit: "V/ns" },
+        { key: "lowerTrigger", label: "Lower Trigger", type: "number", unit: "V" },
+        { key: "upperTrigger", label: "Upper Trigger", type: "number", unit: "V" },
+        { key: "logicOnLevel", label: "Logic High Level", type: "number", unit: "V" },
+        { key: "logicOffLevel", label: "Logic Low Level", type: "number", unit: "V" },
+    ],
+    "159": [
+        { key: "r_on", label: "On Resistance", type: "number", unit: "Ω" },
+        { key: "r_off", label: "Off Resistance", type: "number", unit: "Ω" },
+        { key: "threshold", label: "Threshold", type: "number", unit: "V" },
+    ],
+    "180": [
+        { key: "r_on", label: "On Resistance", type: "number", unit: "Ω" },
+        { key: "r_off", label: "Off Resistance", type: "number", unit: "Ω" },
+        { key: "r_off_ground", label: "Off Pulldown Resistance", type: "number", unit: "Ω" },
+        { key: "highVoltage", label: "High Voltage", type: "number", unit: "V" },
+    ],
+    "422": [
+        { key: "delay", label: "Delay", type: "number", unit: "s" },
+        { key: "threshold", label: "Threshold", type: "number", unit: "V" },
+        { key: "highVoltage", label: "High Voltage", type: "number", unit: "V" },
+    ],
+    "414": [
+        { key: "onDelay", label: "On Delay", type: "number", unit: "s" },
+        { key: "offDelay", label: "Off Delay", type: "number", unit: "s" },
+        { key: "onResistance", label: "On Resistance", type: "number", unit: "Ω" },
+        { key: "offResistance", label: "Off Resistance", type: "number", unit: "Ω" },
+    ],
 };
 
 // The gate family (AND/OR/NAND/NOR/XOR/XNOR) all share AndGateElm's shape --
@@ -159,6 +222,12 @@ export const FIELD_SCHEMA: Record<string, FieldSchema[]> = {
 for (const id of ["151", "152", "153", "154", "431"]) {
     FIELD_SCHEMA[id] = FIELD_SCHEMA["150"];
 }
+
+// SchmittElm ('182') doesn't override dumpTokens() -- same 5-field shape as
+// its parent InvertingSchmittElm ('183'). AnalogSwitch2Elm ('160') likewise
+// inherits AnalogSwitchElm's ('159') dumpTokens() unchanged.
+FIELD_SCHEMA["182"] = FIELD_SCHEMA["183"];
+FIELD_SCHEMA["160"] = FIELD_SCHEMA["159"];
 
 export function getFieldValue(elm: object, key: string): unknown {
     const parts = key.split(".");

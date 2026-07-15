@@ -42,6 +42,32 @@ const dumpTypeMap: Record<string, ElementCtor> = {
     'b': elements.BoxElm,
     '370': elements.AmmeterElm,
     'z': elements.ZenerElm,
+    // Power/Sources group (see docs/react-rewrite-plan.md session note).
+    // ACRailElm/SquareRailElm/NoiseElm need no entries of their own -- Java's
+    // getDumpClass() makes them dump/reload as plain RailElm ('R'), so
+    // they're palette-only presets (see palette.ts).
+    '172': elements.VarRailElm,
+    'A': elements.AntennaElm,
+    '170': elements.SweepElm,
+    '200': elements.AMElm,
+    '201': elements.FMElm,
+    // Analog Active Building Blocks group (see docs/react-rewrite-plan.md
+    // session note). OpAmpSwapElm needs no entry of its own -- like the
+    // Power-group presets, it dumps as plain OpAmpElm ('a') via Java's
+    // getDumpClass() override.
+    '212': elements.VCVSElm,
+    '213': elements.VCCSElm,
+    '214': elements.CCVSElm,
+    '215': elements.CCCSElm,
+    '183': elements.InvertingSchmittElm,
+    '182': elements.SchmittElm,
+    '159': elements.AnalogSwitchElm,
+    '160': elements.AnalogSwitch2Elm,
+    '401': elements.ComparatorElm,
+    '402': elements.OTAElm,
+    '180': elements.TriStateElm,
+    '422': elements.DelayBufferElm,
+    '414': elements.TimeDelayRelayElm,
 };
 
 export function createElement(

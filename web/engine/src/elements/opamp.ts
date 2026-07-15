@@ -107,4 +107,10 @@ export class OpAmpElm extends CircuitElm {
 
     validateRailNode(n: number) { return true; }
     validate() { return true; }
+
+    // BUGFIX (see CircuitElm.setCurrent()'s comment in base.ts): the
+    // op-amp's output current flows entirely through its own voltage
+    // source (the output pin is stamped as a VS, see stamp() above). No
+    // override needed here -- the base setCurrent(vs, c) default handles
+    // it, since this class has exactly one voltage source.
 }
