@@ -1,6 +1,6 @@
 "use client";
 
-import { CircuitEngine, CircuitElm, CircuitParser } from "@fulgurlab/engine";
+import { CircuitEngine, CircuitElm, CircuitParser, createElement } from "@fulgurlab/engine";
 
 // Bounded so a very long editing session can't grow this without limit --
 // 100 steps is generous for a circuit editor (Falstad's own app has no
@@ -49,7 +49,16 @@ class EngineStore {
     engine = new CircuitEngine();
     version = 0;
     status: RunStatus = { state: "idle" };
-    selected: CircuitElm | null = null;
+    // Multi-select (KiCad-style), replacing the old single `selected` field.
+    // A Set rather than an array so toggleSelect()/isSelected() are O(1) and
+    // adding the same element twice (e.g. a marquee re-drag that re-includes
+    // an already-selected element) is naturally idempotent. Element identity
+    // is stable across reanalyze() -- Analyzer.analyze() only reorders/
+    // expands engine.elmList, it never clones or reconstructs existing
+    // element instances (see node.ts's addChildElms) -- so holding direct
+    // CircuitElm references here (rather than e.g. array indices) stays
+    // correct even after a move/add/remove triggers reanalysis.
+    selection: Set<CircuitElm> = new Set();
     scopeChannels: ScopeChannel[] = [];
     private nextScopeChannelId = 1;
     private scopeChannelCounts: Record<string, number> = {};
@@ -115,7 +124,7 @@ class EngineStore {
         } catch (e) {
             this.status = { state: "error", message: e instanceof Error ? e.message : String(e) };
         }
-        this.selected = null;
+        this.selection = new Set();
         // CircuitParser rebuilds elmList from scratch -- every element is a
         // BRAND NEW instance, so any existing scope channel's `elm` reference
         // is now orphaned (it matches nothing in the live circuit anymore).
@@ -208,8 +217,30 @@ class EngineStore {
     removeElement(elm: CircuitElm) {
         this.beginTransaction();
         this.engine.elmList = this.engine.elmList.filter(e => e !== elm);
-        if (this.selected === elm) this.selected = null;
+        if (this.selection.has(elm)) {
+            const next = new Set(this.selection);
+            next.delete(elm);
+            this.selection = next;
+        }
         this.scopeChannels = this.scopeChannels.filter((c) => c.elm !== elm);
+        this.reanalyze();
+        this.endTransaction();
+    }
+
+    // Bulk delete for Del/Backspace on a multi-selection -- one undo step for
+    // the whole batch, not one per element (mirrors addElement/removeElement's
+    // own single-mutation transaction shape, just widened to a set).
+    removeElements(elms: Iterable<CircuitElm>) {
+        const toRemove = new Set(elms);
+        if (toRemove.size === 0) return;
+        this.beginTransaction();
+        this.engine.elmList = this.engine.elmList.filter(e => !toRemove.has(e));
+        if (this.selection.size > 0) {
+            const next = new Set(this.selection);
+            for (const e of toRemove) next.delete(e);
+            this.selection = next;
+        }
+        this.scopeChannels = this.scopeChannels.filter((c) => !toRemove.has(c.elm));
         this.reanalyze();
         this.endTransaction();
     }
@@ -237,7 +268,7 @@ class EngineStore {
     // canvas's probe-tool click calls (add if not already probed, remove if
     // it is). Deliberately NOT wrapped in begin/endTransaction: watching a
     // signal is a viewing concern, not a circuit edit, so it isn't part of
-    // undo/redo history at all (consistent with how `selected` also isn't).
+    // undo/redo history at all (consistent with how `selection` also isn't).
     isProbed(elm: CircuitElm): ScopeChannel | undefined {
         return this.scopeChannels.find((c) => c.elm === elm);
     }
@@ -307,19 +338,158 @@ class EngineStore {
         this.reanalyze();
     }
 
+    // Single-endpoint drag (KiCad's "grab just this handle" move): unlike
+    // setElementGeometry() above, this only ever touches ONE end of the
+    // element, leaving the other exactly where it was. `which` selects x/y
+    // vs x2/y2 -- kept as a discriminated pair rather than four separate
+    // setters so callers can't accidentally pass a partial/inconsistent
+    // update (e.g. new x without a matching new y).
+    setElementEndpoint(elm: CircuitElm, which: "point1" | "point2", x: number, y: number) {
+        if (which === "point1") { elm.x = x; elm.y = y; }
+        else { elm.x2 = x; elm.y2 = y; }
+        elm.preStamp();
+        this.reanalyze();
+    }
+
+    // Group move: set every element's ABSOLUTE geometry to its own
+    // pre-gesture origin plus the SAME (dx, dy) -- used for both the
+    // "grabbed element is part of a multi-selection" body-move case and the
+    // M-key pickup mode's live cursor-follow. Deliberately takes each
+    // element's origin snapshot (captured once, at gesture start) rather
+    // than mutating relative to wherever the element currently sits: this
+    // method is called on EVERY mousemove of a drag, so an incremental
+    // `elm.x += dx` here would compound across frames and send the group
+    // flying (a real bug caught while wiring up the M-key pickup mode's
+    // live-follow, which calls this on every mousemove -- see
+    // CircuitCanvas's pickupState handling). Callers are responsible for
+    // their own begin/endMoveTransaction bracketing (same convention as
+    // setElementGeometry, which also assumes its caller brackets the whole
+    // gesture) so a multi-element drag still collapses to one undo step
+    // regardless of how many elements moved.
+    moveSelectionBy(origins: { elm: CircuitElm; origX: number; origY: number; origX2: number; origY2: number }[], dx: number, dy: number) {
+        for (const o of origins) {
+            o.elm.x = o.origX + dx; o.elm.y = o.origY + dy;
+            o.elm.x2 = o.origX2 + dx; o.elm.y2 = o.origY2 + dy;
+            o.elm.preStamp();
+        }
+        this.reanalyze();
+    }
+
+    // Rotate one element 90 degrees clockwise about its own midpoint.
+    // Screen-space Y grows downward, so a clockwise rotation on-screen is
+    // (x,y) -> (cx - (y-cy), cy + (x-cx)) -- i.e. what would be "counter-
+    // clockwise" in standard math-y-up convention. Both endpoints rotate
+    // about the SAME center (the pre-rotation midpoint) so the element spins
+    // in place rather than translating. Coordinates are re-snapped to the
+    // grid afterward since a diagonal element's rotated endpoints can land
+    // on fractional grid positions otherwise (e.g. an odd-length diagonal
+    // run), and off-grid geometry would silently break future snap-drags.
+    rotateElementCW(elm: CircuitElm, gridSize: number) {
+        this.beginTransaction();
+        const cx = (elm.x + elm.x2) / 2, cy = (elm.y + elm.y2) / 2;
+        const rot = (px: number, py: number) => {
+            const rx = cx - (py - cy);
+            const ry = cy + (px - cx);
+            return { x: Math.round(rx / gridSize) * gridSize, y: Math.round(ry / gridSize) * gridSize };
+        };
+        const p1 = rot(elm.x, elm.y);
+        const p2 = rot(elm.x2, elm.y2);
+        elm.x = p1.x; elm.y = p1.y; elm.x2 = p2.x; elm.y2 = p2.y;
+        elm.preStamp();
+        this.reanalyze();
+        this.endTransaction();
+    }
+
+    // Ctrl/Cmd+D duplicate: clone via the element's OWN dump() line rather
+    // than hand-copying fields, so duplication automatically stays correct
+    // for every element type's tokens (resistance, gate input count,
+    // waveform params, ...) without this store needing per-type knowledge --
+    // exactly the same "one source of truth" createElement() factory path
+    // CircuitParser.parse() and CircuitCanvas's finalizePlacement() both
+    // already go through. dump() format is `<dumpType> x y x2 y2 flags
+    // <tokens...>` (base.ts), so tokens[0..5] are geometry/flags and [6:]
+    // are the type-specific extra tokens createElement() expects.
+    duplicateSelection(elms: Iterable<CircuitElm>, offset: number): CircuitElm[] {
+        const copies: CircuitElm[] = [];
+        this.beginTransaction();
+        for (const elm of elms) {
+            const tokens = elm.dump().split(/\s+/);
+            const dumpType = tokens[0];
+            const x = parseFloat(tokens[1]) + offset;
+            const y = parseFloat(tokens[2]) + offset;
+            const x2 = parseFloat(tokens[3]) + offset;
+            const y2 = parseFloat(tokens[4]) + offset;
+            const flags = parseInt(tokens[5], 10);
+            const extraTokens = tokens.slice(6);
+            const copy = createElement(dumpType, x, y, x2, y2, flags, extraTokens);
+            if (copy) copies.push(copy);
+        }
+        if (copies.length > 0) {
+            for (const c of copies) c.preStamp();
+            this.engine.elmList = [...this.engine.elmList, ...copies];
+            this.reanalyze();
+        }
+        this.endTransaction();
+        return copies;
+    }
+
     clear() {
         this.beginTransaction();
         this.engine.clear();
-        this.selected = null;
+        this.selection = new Set();
         this.scopeChannels = [];
         this.status = { state: "idle" };
         this.bump();
         this.endTransaction();
     }
 
+    // --- Selection API (multi-select, KiCad-style) --------------------
+    //
+    // select(): replace the whole selection with a single element (or clear
+    // it with null) -- the common case for a plain click.
+    // toggleSelect(): flip one element's membership without disturbing the
+    // rest -- Shift-click add/remove and Shift-drag marquee both use this.
+    // selectMany(): replace the whole selection with a given set -- a plain
+    // (non-Shift) marquee release, and Ctrl/Cmd+A "select all".
+    // selectedOne(): the single-element convenience read ElementEditModal/
+    // the E-key/R-key shortcuts need ("is there exactly one thing selected,
+    // and if so what is it") -- returns null both when nothing AND when
+    // multiple things are selected, so callers can't accidentally operate on
+    // an arbitrary pick from a multi-selection.
     select(elm: CircuitElm | null) {
-        this.selected = elm;
+        this.selection = elm ? new Set([elm]) : new Set();
         this.bump();
+    }
+
+    toggleSelect(elm: CircuitElm) {
+        const next = new Set(this.selection);
+        if (next.has(elm)) next.delete(elm);
+        else next.add(elm);
+        this.selection = next;
+        this.bump();
+    }
+
+    selectMany(elms: Iterable<CircuitElm>) {
+        this.selection = new Set(elms);
+        this.bump();
+    }
+
+    clearSelection() {
+        if (this.selection.size === 0) return;
+        this.selection = new Set();
+        this.bump();
+    }
+
+    isSelected(elm: CircuitElm): boolean {
+        return this.selection.has(elm);
+    }
+
+    selectedOne(): CircuitElm | null {
+        if (this.selection.size !== 1) return null;
+        // Sets preserve insertion order but have no direct index access;
+        // for a size-1 set this loop runs exactly once.
+        for (const elm of this.selection) return elm;
+        return null;
     }
 
     stepOnceSafe(): boolean {

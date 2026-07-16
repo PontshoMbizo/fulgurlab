@@ -16,7 +16,7 @@ interface Props {
 // than a second, separate field-rendering implementation.
 export default function ElementEditModal({ onClose }: Props) {
     useSyncExternalStore(engineStore.subscribe, engineStore.getVersion, engineStore.getVersion);
-    const elm = engineStore.selected;
+    const elm = engineStore.selectedOne();
 
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {

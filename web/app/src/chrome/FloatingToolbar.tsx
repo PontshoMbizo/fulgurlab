@@ -14,6 +14,17 @@ interface Props {
     onSelect: (item: PaletteItem | null) => void;
     probeActive: boolean;
     onToggleProbe: () => void;
+    // A-key shortcut (CircuitCanvas's keydown handler, bridged through
+    // page.tsx's onOpenPalette): flyoutOpen stays this component's OWN local
+    // state (preserving the click-outside-to-close effect below untouched)
+    // rather than being fully lifted to page.tsx just for this one trigger --
+    // instead, page.tsx bumps a counter every time "A" is pressed, and this
+    // effect just opens the flyout whenever that counter changes. Any value
+    // that changes on each press works; a counter (rather than e.g. a
+    // boolean) avoids the "press A twice in a row while it's already open"
+    // edge case where a boolean toggling true->true wouldn't produce a new
+    // value for the effect to react to.
+    openFlyoutSignal?: number;
 }
 
 // Top-left floating pill, transcribed from the reference mockup: Draw /
@@ -22,7 +33,7 @@ interface Props {
 // canvas to add it as a MATLAB-style scope channel) -- kept in the exact
 // same button slot the mockup reserved for it, so no new UI had to be
 // invented for this piece.
-export default function FloatingToolbar({ activeTool, onSelect, probeActive, onToggleProbe }: Props) {
+export default function FloatingToolbar({ activeTool, onSelect, probeActive, onToggleProbe, openFlyoutSignal }: Props) {
     const [flyoutOpen, setFlyoutOpen] = useState(false);
     const rootRef = useRef<HTMLDivElement>(null);
 
@@ -34,6 +45,20 @@ export default function FloatingToolbar({ activeTool, onSelect, probeActive, onT
         window.addEventListener("mousedown", onDown);
         return () => window.removeEventListener("mousedown", onDown);
     }, [flyoutOpen]);
+
+    // Opens (never closes) on every new signal value -- an explicit toggle
+    // isn't right here since the A-key's own documented behavior is "open
+    // the palette flyout", not "toggle" it (Esc / clicking elsewhere already
+    // cover closing it). Skips the very first render (openFlyoutSignal
+    // starting at its initial value, e.g. 0, shouldn't pop the flyout open
+    // before the user has pressed anything) via the ref-based "have we seen
+    // a real change yet" guard.
+    const seenSignal = useRef(openFlyoutSignal);
+    useEffect(() => {
+        if (openFlyoutSignal === undefined || openFlyoutSignal === seenSignal.current) return;
+        seenSignal.current = openFlyoutSignal;
+        setFlyoutOpen(true);
+    }, [openFlyoutSignal]);
 
     const isWire = activeTool === WIRE_TOOL;
     const isSelect = activeTool === null && !probeActive;
