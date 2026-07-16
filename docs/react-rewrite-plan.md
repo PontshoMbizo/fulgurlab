@@ -1505,3 +1505,29 @@ npm -w web/app run test && npm -w web/app run build
 # engine ↔ real-backend integration (gated on toolchains)
 npm -w web/engine run test:integration
 ```
+
+---
+
+## Session note — 2026-07-16 (KiCad UX pass, parallel subagents)
+
+Three Sonnet subagents ran in parallel with disjoint file ownership, audited and
+integrated by the lead session:
+
+1. **Canvas UX** (`d0492fbb`): KiCad interaction model — persistent tool, click-click
+   placement, multi-select Set + marquee (contain/touch), endpoint-vs-body moves with
+   handles, M/E/R/W/A/P/Del/Ctrl+A/Ctrl+D/Home shortcuts, grid dots aligned to the
+   real snap grid (was 26px vs 16), Inspector panel removed. Audit fix: M-key drop
+   click was swallowed by the per-element mousedown handler.
+2. **Scope** (`7136d2b4`): fixed timebase window (the "sine speeds up" artifact was
+   the x-axis stretching to data extent while the ring buffer filled), window
+   selector + pause, docked-bottom-by-default with drag-out/drag-back docking,
+   `--fl-scope-dock` CSS var lifts bottom chrome above the dock.
+3. **KiCad symbols** (`0839a29a`): `.kicad_sym` s-expr parser, SVG previews, binding
+   registry (symbol → element type / ExtChip template), canvas override rendering
+   (2-pin symbols fitted pin-to-pin onto posts). 25 app-side vitest tests.
+
+Known small gaps, deliberately deferred: ElementEditModal's own Escape listener fires
+alongside the canvas Esc cascade (harmless double-handling); scope channels don't
+survive undo/redo reparse (documented in store.ts); ScopeChannel history is push/shift
+O(n) (fine at 2000 samples); KiCad symbol pin-name rendering on canvas is off
+(preview-only) pending an ExtChip pin-mapping UI.
