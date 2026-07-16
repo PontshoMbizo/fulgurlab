@@ -47,8 +47,8 @@ export default function SpeedSlider() {
 
     return (
         <div
-            className="absolute bottom-[18px] right-[18px] z-[5] flex items-center gap-2.5 px-3.5 py-2 rounded-xl border border-white/10 shadow-lg"
-            style={{ background: "rgba(18,18,20,.8)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)", boxShadow: "0 8px 24px rgba(0,0,0,.45)" }}
+            className="absolute right-[18px] z-[5] flex items-center gap-2.5 px-3.5 py-2 rounded-xl border border-white/10 shadow-lg"
+            style={{ bottom: "calc(18px + var(--fl-scope-dock, 0px))", background: "rgba(18,18,20,.8)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)", boxShadow: "0 8px 24px rgba(0,0,0,.45)" }}
         >
             <span className="text-[9px] font-black uppercase tracking-[.14em] text-neutral-500">Speed</span>
             <div

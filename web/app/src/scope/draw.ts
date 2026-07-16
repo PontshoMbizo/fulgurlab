@@ -1,4 +1,17 @@
-import type { ScopeChannel } from "@/engine/store";
+import type { ScopeChannel, ScopeSample } from "@/engine/store";
+
+// The fixed visible timebase, analogous to a real scope's time/div setting
+// (collapsed here to one "total window" number per the task brief, rather
+// than reproducing a division count). `tEnd` is the right-hand edge of the
+// plot -- normally the latest sample time across channels, or frozen at the
+// moment of pause -- and `span` is how many seconds of history are visible,
+// so the window is always [tEnd - span, tEnd]. This is what makes the trace
+// a real oscilloscope sweep: the x-axis mapping is fixed by these two
+// numbers, NOT by however much data happens to be in the rolling buffers.
+export interface ScopeTimebase {
+    tEnd: number;
+    span: number;
+}
 
 // Pure canvas-drawing routine, kept separate from the React shell so the
 // "how do I paint a MATLAB-style axes box" logic can be read/tested on its
@@ -10,6 +23,7 @@ export function drawScopeCanvas(
     cssWidth: number,
     cssHeight: number,
     dpr: number,
+    timebase: ScopeTimebase,
 ) {
     ctx.save();
     ctx.scale(dpr, dpr);
@@ -24,33 +38,41 @@ export function drawScopeCanvas(
     const plotW = Math.max(1, cssWidth - PAD_LEFT - PAD_RIGHT);
     const plotH = Math.max(1, cssHeight - PAD_TOP - PAD_BOTTOM);
 
-    // Collect the visible time/value range across every channel's history --
-    // a rolling window, same idea as a real oscilloscope's sweep, not a
-    // fixed axis range.
-    let tMin = Infinity, tMax = -Infinity, vMin = Infinity, vMax = -Infinity;
+    // Time axis is FIXED by the timebase, not derived from data extent --
+    // this is the fix for the "sine speeds up while the buffer fills"
+    // symptom. A sample's x position never shifts as more history arrives;
+    // the trace instead grows in from the right edge as time passes, same
+    // as a real scope/strip-chart recorder.
+    const tMax = timebase.tEnd;
+    const tMin = timebase.tEnd - timebase.span;
+
+    // Auto Y-scale still looks at the DATA, but only the slice of it that
+    // falls inside the visible window -- a sample that's scrolled off the
+    // left edge shouldn't affect the vertical scale of what's on screen now.
+    let vMin = Infinity, vMax = -Infinity;
+    let visibleCount = 0;
     for (const ch of channels) {
         for (const s of ch.history) {
-            if (s.t < tMin) tMin = s.t;
-            if (s.t > tMax) tMax = s.t;
+            if (s.t < tMin || s.t > tMax) continue;
+            visibleCount++;
             if (s.value < vMin) vMin = s.value;
             if (s.value > vMax) vMax = s.value;
         }
     }
 
-    const hasData = channels.some((c) => c.history.length > 1) && Number.isFinite(tMin) && Number.isFinite(vMin);
+    const hasData = visibleCount > 1 && Number.isFinite(vMin);
 
     // Axes box border (drawn either way, even with no data yet -- an empty
     // set of labeled axes is still useful orientation, same as a fresh
     // MATLAB figure window before anything's been plotted).
     if (!hasData) {
-        tMin = 0; tMax = 1; vMin = -1; vMax = 1;
+        vMin = -1; vMax = 1;
     } else {
         // Pad the value range so a trace never touches the very top/bottom
         // edge, and guard against a degenerate (near-zero-height) range.
         const vSpan = vMax - vMin;
         const vPad = vSpan < 1e-9 ? Math.max(0.1, Math.abs(vMax) * 0.1 || 0.1) : vSpan * 0.1;
         vMin -= vPad; vMax += vPad;
-        if (tMax - tMin < 1e-12) { tMax = tMin + 1e-6; }
     }
 
     const xOf = (t: number) => PAD_LEFT + ((t - tMin) / (tMax - tMin)) * plotW;
@@ -116,13 +138,24 @@ export function drawScopeCanvas(
     ctx.clip();
     for (const ch of channels) {
         if (ch.history.length < 2) continue;
+        // Samples strictly outside [tMin, tMax] are not drawn -- per the
+        // fixed timebase, they've either scrolled off the left edge or
+        // haven't happened yet relative to the right edge. One sample just
+        // outside each edge (if available) IS included so the line segment
+        // crossing the boundary interpolates to the true edge value instead
+        // of the trace visibly stopping short of it; findWindowSlice() below
+        // picks that [startIdx, endIdx] range once per channel rather than
+        // filtering the whole 2000-sample array with a callback per point.
+        const { startIdx, endIdx } = findWindowSlice(ch.history, tMin, tMax);
+        if (endIdx - startIdx < 1) continue; // fewer than 2 points in range
         ctx.strokeStyle = ch.color;
         ctx.lineWidth = 1.75;
         ctx.beginPath();
-        ch.history.forEach((s, i) => {
+        for (let i = startIdx; i <= endIdx; i++) {
+            const s = ch.history[i];
             const x = xOf(s.t), y = yOf(s.value);
-            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-        });
+            if (i === startIdx) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
         ctx.stroke();
     }
     ctx.restore();
@@ -152,4 +185,29 @@ function formatSeconds(t: number): string {
 function formatValue(v: number): string {
     if (Math.abs(v) >= 1000 || (Math.abs(v) < 0.001 && v !== 0)) return v.toExponential(1);
     return v.toFixed(Math.abs(v) < 1 ? 3 : 2);
+}
+
+// Picks the [startIdx, endIdx] range of `history` to actually draw for the
+// window [tMin, tMax]: every sample strictly inside the window, PLUS one
+// sample just before it (if one exists) and one just after (if one exists).
+// Those two extra points are what let the polyline interpolate cleanly to
+// the window's edges instead of the trace visibly stopping short of tMin/
+// tMax -- ctx.clip() against the plot box then hides the small overshoot
+// outside the box. `history` is time-ordered (samples are appended in sim-
+// time order and only ever shift() off the front), so a single linear scan
+// suffices; this runs once per channel per frame rather than once per point.
+function findWindowSlice(history: ScopeSample[], tMin: number, tMax: number): { startIdx: number; endIdx: number } {
+    let startIdx = -1, endIdx = -1;
+    for (let i = 0; i < history.length; i++) {
+        const t = history[i].t;
+        if (t < tMin) {
+            startIdx = i; // keep advancing -- we want the LAST point before tMin
+            continue;
+        }
+        if (startIdx === -1) startIdx = i; // no point before tMin exists; window starts here
+        endIdx = i;
+        if (t > tMax) break; // this is the first point past tMax; stop here
+    }
+    if (endIdx === -1) return { startIdx: 0, endIdx: -1 }; // nothing in range at all
+    return { startIdx, endIdx };
 }
