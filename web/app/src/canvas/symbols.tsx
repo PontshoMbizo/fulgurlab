@@ -1,6 +1,8 @@
 import type { ReactElement, MouseEvent as ReactMouseEvent } from "react";
 import type { CircuitElm } from "@fulgurlab/engine";
 import { voltageColor, overlayColor, NEUTRAL_GRAY, GROUND_COLOR, BACKGROUND } from "./theme";
+import { bindingStore } from "@/kicad/bindings";
+import KicadBoundBody from "./KicadBoundBody";
 
 // Every symbol is authored in a LOCAL horizontal frame -- x from 0 (point1)
 // to dn (point2), y perpendicular -- exactly mirroring how Falstad's own
@@ -640,6 +642,12 @@ export function ElementSymbol({
 
     const baseColor = FIXED_BASE_COLOR[dumpType] ?? voltageColor(safeVoltageDiff(elm));
     const color = overlayColor(baseColor, selected, hovered);
+    // User-bound KiCad symbol override (Symbol Library panel): when a
+    // .kicad_sym symbol has been bound to this (dumpType, flags) pair, it
+    // replaces the built-in body drawing entirely; posts/extra leads keep
+    // coming from engine geometry below either way. CircuitCanvas subscribes
+    // to bindingStore so bind/unbind re-renders reach here.
+    const kicadOverride = bindingStore.getVisualOverride(dumpType, elm.flags);
     const Body = BODIES[dumpType];
     const n = elm.getPostCount();
     const extraPosts: ReactElement[] = [];
@@ -661,7 +669,9 @@ export function ElementSymbol({
     return (
         <g onMouseDown={onMouseDown} style={{ cursor: onMouseDown ? "pointer" : undefined }}>
             <g transform={`translate(${elm.point1.x} ${elm.point1.y}) rotate(${angleDeg(elm)})`}>
-                {Body ? <Body elm={elm} color={color} /> : <Leads x1={elm.dn} color={color} />}
+                {kicadOverride
+                    ? <KicadBoundBody symbol={kicadOverride} elm={elm} color={color} />
+                    : Body ? <Body elm={elm} color={color} /> : <Leads x1={elm.dn} color={color} />}
             </g>
             {extraLeads}
             {extraPosts}

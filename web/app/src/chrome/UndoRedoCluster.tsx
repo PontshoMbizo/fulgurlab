@@ -24,7 +24,18 @@ function downloadCircuitFile() {
 // the pixel-exact top-left toolbar pill or top-right status cluster -- it
 // can't collide with either regardless of their own (dynamic) widths, and
 // keeps both of those byte-for-byte matching the mockup untouched.
-export default function UndoRedoCluster() {
+// Inline chip-outline icon (kept local: icons.tsx carries only the mockup's
+// own glyph set; this button has no mockup counterpart).
+function LibraryIcon() {
+    return (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <rect x="7" y="7" width="10" height="10" rx="1.5" />
+            <path d="M9 7V4M15 7V4M9 20v-3M15 20v-3M7 9H4M7 15H4M20 9h-3M20 15h-3" />
+        </svg>
+    );
+}
+
+export default function UndoRedoCluster({ onOpenSymbols }: { onOpenSymbols?: () => void }) {
     useSyncExternalStore(engineStore.subscribe, engineStore.getVersion, engineStore.getVersion);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const status = engineStore.status;
@@ -48,6 +59,11 @@ export default function UndoRedoCluster() {
                 <IconButton title="Open circuit file" onClick={() => fileInputRef.current?.click()}>
                     <FolderIcon />
                 </IconButton>
+                {onOpenSymbols && (
+                    <IconButton title="KiCad symbol library (.kicad_sym import + bindings)" onClick={onOpenSymbols}>
+                        <LibraryIcon />
+                    </IconButton>
+                )}
                 <input
                     ref={fileInputRef}
                     type="file"
