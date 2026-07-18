@@ -22,8 +22,8 @@ export default function StatusHint({ activeTool, anchored, selectionCount }: Pro
     let text: string | null = null;
     if (activeTool) {
         text = anchored
-            ? `${activeTool.label} -- click to place · Esc to cancel`
-            : `${activeTool.label} armed -- click-click to place · Esc to cancel`;
+            ? activeTool.label
+            : activeTool.label;
     } else if (selectionCount > 1) {
         text = `${selectionCount} elements selected`;
     }

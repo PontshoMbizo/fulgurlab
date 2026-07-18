@@ -290,9 +290,7 @@ export default function Scope({ probeActive }: Props) {
 
     const legend = (
         <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-x-auto">
-            {channels.length === 0 ? (
-                <span className="text-[10.5px] text-neutral-500 italic whitespace-nowrap">Click an element on the canvas to add a channel</span>
-            ) : (
+            {channels.length === 0 ? null : (
                 channels.map((ch) => {
                     const last = ch.history[ch.history.length - 1];
                     const unit = ch.mode === "current" ? "A" : "V";
@@ -408,7 +406,20 @@ export default function Scope({ probeActive }: Props) {
                             title bar's own onMouseDown (which starts the
                             undock-drag watch) -- otherwise every click here
                             would attach a throwaway set of drag listeners. */}
-                        <div className="flex items-center flex-1 min-w-0 mx-3 gap-2" onMouseDown={(e) => e.stopPropagation()}>
+                        <div
+                            className="flex items-center flex-1 min-w-0 mx-3 gap-2"
+                            onMouseDown={(e) => {
+                                // Only swallow mousedowns that actually target an
+                                // interactive control (select/button/input) -- the
+                                // wrapper spans nearly the whole title bar (legend is
+                                // flex-1), and stopping propagation unconditionally
+                                // made the undock-drag unreachable from anywhere but
+                                // the tiny "Scope" label (the reported "can't undock"
+                                // bug). Empty legend space now drags like the title.
+                                const t = e.target as HTMLElement;
+                                if (t.closest("button, select, input")) e.stopPropagation();
+                            }}
+                        >
                             {legend}
                             {headerControls}
                             {channels.length > 0 && (

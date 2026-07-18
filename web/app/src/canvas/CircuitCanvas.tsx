@@ -79,6 +79,10 @@ export default function CircuitCanvas({
     const dragStart = useRef<{ x: number; y: number } | null>(null);
     const [dragCurrent, setDragCurrent] = useState<{ x: number; y: number } | null>(null);
     const [hovered, setHovered] = useState<CircuitElm | null>(null);
+    // KiCad-style crosshair: full-canvas hairlines through the SNAPPED cursor
+    // position (the point a click would actually use), null when the cursor
+    // is outside the canvas.
+    const [crosshair, setCrosshair] = useState<{ x: number; y: number } | null>(null);
     const [size, setSize] = useState({ w: 800, h: 600 });
     const [viewport, setViewport] = useState<Viewport>({ x: 0, y: 0, scale: 1 });
     const [spacePressed, setSpacePressed] = useState(false);
@@ -600,6 +604,7 @@ export default function CircuitCanvas({
     //     follows the cursor live, committed on the eventual mousedown (see
     //     handleMouseDown's pickupState branch) rather than on mouseup.
     const handleMouseMove = useCallback((e: ReactMouseEvent) => {
+        setCrosshair(toWorldPoint(e));
         if (clickAnchor.current) {
             setDragCurrent(toWorldPoint(e));
             return;
@@ -920,7 +925,7 @@ export default function CircuitCanvas({
                 style={{ cursor, display: "block" }}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
-                onMouseLeave={() => setHovered(null)}
+                onMouseLeave={() => { setHovered(null); setCrosshair(null); }}
                 onDoubleClick={handleDoubleClick}
                 onContextMenu={(e) => e.preventDefault()}
             >
@@ -934,6 +939,15 @@ export default function CircuitCanvas({
                                     selected={engineStore.isSelected(elm)}
                                     hovered={elm === hovered}
                                     onMouseDown={(e) => {
+                                        // Probe composes with an armed draw tool (the user can
+                                        // wire and scope at the same time): element clicks toggle
+                                        // a channel, empty-canvas clicks (which bubble past this
+                                        // handler) still place the armed element.
+                                        if (probeMode) {
+                                            e.stopPropagation();
+                                            engineStore.toggleScopeChannel(elm);
+                                            return;
+                                        }
                                         if (activeTool) return;
                                         // M-key pickup drop: the picked-up element follows the
                                         // cursor, so the drop click almost always lands ON the
@@ -942,10 +956,6 @@ export default function CircuitCanvas({
                                         // bubble instead of stopPropagation-ing it away.
                                         if (pickupState.current) return;
                                         e.stopPropagation();
-                                        if (probeMode) {
-                                            engineStore.toggleScopeChannel(elm);
-                                            return;
-                                        }
                                         // Endpoint handles sit visually on top
                                         // of (and within) the element body
                                         // they belong to, so this per-element
@@ -1021,6 +1031,20 @@ export default function CircuitCanvas({
                         />,
                     ]))}
 
+                    {crosshair && (() => {
+                        // World-space extents of the visible viewport so the
+                        // hairlines always span the full canvas at any pan/zoom.
+                        const v = viewport;
+                        const x0 = (0 - v.x) / v.scale, x1 = (size.w - v.x) / v.scale;
+                        const y0 = (0 - v.y) / v.scale, y1 = (size.h - v.y) / v.scale;
+                        const w = 1 / v.scale;
+                        return (
+                            <g pointerEvents="none">
+                                <line x1={x0} y1={crosshair.y} x2={x1} y2={crosshair.y} stroke="rgba(255,255,255,0.14)" strokeWidth={w} />
+                                <line x1={crosshair.x} y1={y0} x2={crosshair.x} y2={y1} stroke="rgba(255,255,255,0.14)" strokeWidth={w} />
+                            </g>
+                        );
+                    })()}
                     {dragStart.current && dragCurrent && (
                         <line
                             x1={dragStart.current.x} y1={dragStart.current.y}

@@ -122,10 +122,7 @@ export function drawScopeCanvas(
     ctx.restore();
 
     if (!hasData) {
-        ctx.fillStyle = "rgba(229,231,235,0.35)";
-        ctx.textAlign = "center";
-        ctx.font = "12px ui-sans-serif, system-ui, sans-serif";
-        ctx.fillText("Waiting for data -- run the simulation", PAD_LEFT + plotW / 2, PAD_TOP + plotH / 2);
+        // Empty labeled axes only -- no instructional text (user preference).
         ctx.restore();
         return;
     }

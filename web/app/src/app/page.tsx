@@ -8,7 +8,6 @@ import SpeedSlider from "@/chrome/SpeedSlider";
 import UndoRedoCluster from "@/chrome/UndoRedoCluster";
 import ElementEditModal from "@/inspector/ElementEditModal";
 import Scope from "@/scope/Scope";
-import SymbolLibraryPanel from "@/kicad/SymbolLibraryPanel";
 import { PALETTE, type PaletteItem } from "@/palette/palette";
 
 const WIRE_TOOL = PALETTE.find((p) => p.dumpType === "w")!;
@@ -34,26 +33,21 @@ export default function Home() {
   // needs to track across renders.
   const [probeMode, setProbeMode] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
-  // KiCad Symbol Library panel (import .kicad_sym files, bind symbols to
-  // element types) -- opened from UndoRedoCluster's library button.
-  const [symbolsOpen, setSymbolsOpen] = useState(false);
   // Bumped on every "A" keypress (CircuitCanvas's keydown handler) to tell
   // FloatingToolbar's local flyoutOpen state to pop open -- see that
   // component's own openFlyoutSignal doc comment for why this is a counter
   // rather than a boolean.
   const [openFlyoutSignal, setOpenFlyoutSignal] = useState(0);
 
+  // Draw tool and probe mode compose (the user can wire AND scope at the
+  // same time): arming one no longer disarms the other. With both active,
+  // clicks on an element toggle a channel; clicks on empty canvas place.
   function handleSelectTool(item: PaletteItem | null) {
     setActiveTool(item);
-    if (item !== null) setProbeMode(false);
   }
 
   function handleToggleProbe() {
-    setProbeMode((v) => {
-      const next = !v;
-      if (next) setActiveTool(null);
-      return next;
-    });
+    setProbeMode((v) => !v);
   }
 
   return (
@@ -79,12 +73,11 @@ export default function Home() {
         onToggleProbe={handleToggleProbe}
         openFlyoutSignal={openFlyoutSignal}
       />
-      <UndoRedoCluster onOpenSymbols={() => setSymbolsOpen(true)} />
+      <UndoRedoCluster />
       <StatusCluster />
       <SpeedSlider />
       <Scope probeActive={probeMode} />
       {editModalOpen && <ElementEditModal onClose={() => setEditModalOpen(false)} />}
-      <SymbolLibraryPanel open={symbolsOpen} onClose={() => setSymbolsOpen(false)} />
     </div>
   );
 }
