@@ -52,6 +52,10 @@ export const PALETTE: PaletteItem[] = [
     { dumpType: 'O', label: 'Voltage Output', category: 'Outputs', flags: 0, tokens: [] },
     { dumpType: 'p', label: 'Probe', category: 'Outputs', flags: 0, tokens: [] },
     { dumpType: '370', label: 'Ammeter', category: 'Outputs', flags: 0, tokens: ['0', '0'] },
+    // Placeable 2-terminal oscilloscope (Simulink Scope-block model) --
+    // placing one auto-creates its scope channel; see engine/store.ts's
+    // addElement() and elements/scope.ts's class comment.
+    { dumpType: '403', label: 'Scope', category: 'Outputs', flags: 0, tokens: [] },
 
     // Semiconductors
     { dumpType: 'd', label: 'Diode', category: 'Semiconductors', flags: 0, tokens: [] },

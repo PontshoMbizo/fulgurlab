@@ -129,10 +129,26 @@ class EngineStore {
         // BRAND NEW instance, so any existing scope channel's `elm` reference
         // is now orphaned (it matches nothing in the live circuit anymore).
         // There's no stable cross-reparse element identity to re-match
-        // against yet, so channels can't be preserved across undo/redo/
-        // import -- clearing them is more honest than leaving a frozen,
+        // against, so a channel probing an ARBITRARY element (added via
+        // toggleScopeChannel()) still can't be preserved across undo/redo/
+        // import -- dropping those is more honest than leaving a frozen,
         // silently-dead trace on screen.
+        //
+        // Oscilloscope ELEMENTS (dump type 403) are the one case that CAN be
+        // preserved, though: unlike an arbitrary probed element, a 403 in the
+        // fresh elmList always wants exactly one voltage channel (that's the
+        // whole "placing one auto-creates a channel" contract from
+        // addElement()), so rebuilding the channel list from the new
+        // elmList's own 403 elements -- rather than trying to match against
+        // the old, now-dangling references -- makes scope elements survive
+        // undo/redo/import for free, with no cross-reparse identity needed at
+        // all.
         this.scopeChannels = [];
+        for (const elm of this.engine.elmList) {
+            if (String(elm.getDumpType()) === "403") {
+                this.addScopeChannel(elm, "voltage");
+            }
+        }
         this.bump();
     }
 
@@ -211,6 +227,18 @@ class EngineStore {
         elm.preStamp();
         this.engine.elmList = [...this.engine.elmList, elm];
         this.reanalyze();
+        // Placing an oscilloscope (dump type 403 -- see engine/elements/
+        // scope.ts) auto-creates its scope channel, Simulink-Scope-block
+        // style: the element IS the channel's source from the moment it
+        // lands, no separate "probe this" click needed. Deliberately called
+        // OUTSIDE the begin/endTransaction bracket (both above and via
+        // addScopeChannel() itself, which never brackets one at all) --
+        // scope channels are a viewing concern, not a circuit edit, so they
+        // stay out of undo/redo history the same way `selection` does (see
+        // addScopeChannel()'s own comment).
+        if (String(elm.getDumpType()) === "403") {
+            this.addScopeChannel(elm, "voltage");
+        }
         this.endTransaction();
     }
 
@@ -277,11 +305,18 @@ class EngineStore {
         const dumpType = String(elm.getDumpType());
         const n = (this.scopeChannelCounts[dumpType] ?? 0) + 1;
         this.scopeChannelCounts[dumpType] = n;
+        // Placed oscilloscope elements (403) get a friendly "scope #n" label
+        // instead of the raw dump-type id -- they're the one element that
+        // both IS a channel's source AND reads like a labeled instrument to
+        // the user, unlike toggleScopeChannel()'s "probe any element" case
+        // where the raw dump type (e.g. "r #2") is the more useful hint of
+        // what's actually being watched.
+        const label = dumpType === "403" ? `scope #${n}` : `${dumpType} #${n}`;
         const channel: ScopeChannel = {
             id: this.nextScopeChannelId++,
             elm,
             mode,
-            label: `${dumpType} #${n}`,
+            label,
             color: SCOPE_COLORS[(this.scopeChannels.length) % SCOPE_COLORS.length],
             history: [],
         };

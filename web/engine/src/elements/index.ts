@@ -33,3 +33,4 @@ export * from './comparator';
 export * from './ota';
 export * from './tristate';
 export * from './delay';
+export * from './scope';

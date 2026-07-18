@@ -68,6 +68,10 @@ const dumpTypeMap: Record<string, ElementCtor> = {
     '180': elements.TriStateElm,
     '422': elements.DelayBufferElm,
     '414': elements.TimeDelayRelayElm,
+    // Placeable 2-terminal oscilloscope probe (Simulink Scope-block model --
+    // see elements/scope.ts's class comment for the documented divergence
+    // from Java's screen-space-overlay ScopeElm, which this id names there).
+    '403': elements.ScopeElm,
 };
 
 export function createElement(
