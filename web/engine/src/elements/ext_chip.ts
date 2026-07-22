@@ -86,7 +86,14 @@ export class ExtChipElm extends CircuitElm {
     // long edges (see ExtChipBody.tsx, which draws the actual board photo
     // between the rows). Still absolute `x,y + offset` posts independent of
     // point2/rotation, same non-rotating-block convention as before.
-    static CSPC2 = 32;
+    //
+    // CSPC2/LEAD are 5x the original size (160/80, was 32/16) per an
+    // explicit "make it 5x larger" request -- both remain multiples of the
+    // circuit grid (16px), so posts still land on-grid. ExtChipBody.tsx
+    // mirrors these two values exactly (same duplication pattern as before);
+    // ASPECT/SIZE_X are unchanged since they're ratios/column-counts, not
+    // absolute sizes.
+    static CSPC2 = 160;
     // Minimum row length in pin-columns, so a chip with few/no pins still
     // shows a board at roughly the real part's proportions instead of a
     // sliver.
@@ -97,7 +104,7 @@ export class ExtChipElm extends CircuitElm {
     // pin count.
     static ASPECT = 2.71;
     // Lead-stub length from the board's north/south edge to the actual post.
-    static LEAD = 16;
+    static LEAD = 80;
 
     bridgeUrl: string;
     pinSpec: string;

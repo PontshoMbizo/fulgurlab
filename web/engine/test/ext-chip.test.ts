@@ -83,9 +83,9 @@ describe('ExtChipElm pin geometry', () => {
         ]);
 
         const pA = elm.getPost(0)!, pB = elm.getPost(1)!, pC = elm.getPost(2)!;
-        // both inputs on the south row (same y), spaced cspc2=32 apart in x
+        // both inputs on the south row (same y), spaced cspc2=160 apart in x
         expect(pB.y).toBe(pA.y);
-        expect(pB.x).toBe(pA.x + 32);
+        expect(pB.x).toBe(pA.x + 160);
         // output sits strictly north of (above) the inputs
         expect(pC.y).toBeLessThan(pA.y);
     });

@@ -25,9 +25,17 @@ interface ExtChipBodyProps {
     color: string;
 }
 
-const CSPC2 = 32; // ExtChipElm.CSPC2
-const LEAD = 16;  // ExtChipElm.LEAD
+const CSPC2 = 160; // ExtChipElm.CSPC2 (5x the original 32, per "make it 5x larger")
+const LEAD = 80;   // ExtChipElm.LEAD (5x the original 16)
 const DIM_OPACITY = 0.85;
+// Lead/label sizing scaled up alongside the 5x board so text stays
+// legible and stroke weight stays proportional -- not a straight 5x (that
+// would make hairline leads look like cables), just visibly bigger than
+// the pre-scale 2px/7px values.
+const LEAD_STROKE = 3;
+const LABEL_FONT_SIZE = 15;
+const OUTLINE_STROKE = 4;
+const RING_STROKE = 3;
 
 // Same status color vocabulary as ExtChipDrawer.tsx's STATUS_STYLE (kept as
 // its own small local table rather than importing that module's internal
@@ -56,7 +64,7 @@ export default function ExtChipBody({ elm, color }: ExtChipBodyProps) {
     // Fall back to the same minimum-footprint formula ext_chip.ts uses
     // (SIZE_X columns wide, ASPECT-derived height) if the instance doesn't
     // expose the getters for some reason (e.g. an older/mocked elm).
-    const boardWidth = chip.boardWidth ?? 64;
+    const boardWidth = chip.boardWidth ?? 320;
     const boardHeight = chip.boardHeight ?? boardWidth / 2.71;
 
     const status = extChipRegistry.getStatus(extChipId(elm)).status;
@@ -69,10 +77,10 @@ export default function ExtChipBody({ elm, color }: ExtChipBodyProps) {
                 const px = CSPC2 * (i + 0.5);
                 return (
                     <g key={`out${i}`}>
-                        <line x1={px} y1={0} x2={px} y2={-LEAD} stroke={color} strokeWidth={2} />
+                        <line x1={px} y1={0} x2={px} y2={-LEAD} stroke={color} strokeWidth={LEAD_STROKE} />
                         <text
-                            x={px} y={-LEAD - 3}
-                            fill={color} fillOpacity={DIM_OPACITY} fontSize={7} fontFamily="monospace"
+                            x={px} y={-LEAD - 6}
+                            fill={color} fillOpacity={DIM_OPACITY} fontSize={LABEL_FONT_SIZE} fontFamily="monospace"
                             textAnchor="middle"
                         >
                             {pin.name}
@@ -85,10 +93,10 @@ export default function ExtChipBody({ elm, color }: ExtChipBodyProps) {
                 const px = CSPC2 * (i + 0.5);
                 return (
                     <g key={`in${i}`}>
-                        <line x1={px} y1={boardHeight} x2={px} y2={boardHeight + LEAD} stroke={color} strokeWidth={2} />
+                        <line x1={px} y1={boardHeight} x2={px} y2={boardHeight + LEAD} stroke={color} strokeWidth={LEAD_STROKE} />
                         <text
-                            x={px} y={boardHeight + LEAD + 9}
-                            fill={color} fillOpacity={DIM_OPACITY} fontSize={7} fontFamily="monospace"
+                            x={px} y={boardHeight + LEAD + 18}
+                            fill={color} fillOpacity={DIM_OPACITY} fontSize={LABEL_FONT_SIZE} fontFamily="monospace"
                             textAnchor="middle"
                         >
                             {pin.name}
@@ -110,14 +118,14 @@ export default function ExtChipBody({ elm, color }: ExtChipBodyProps) {
             {/* Selection/hover outline over the photo. */}
             <rect
                 x={0} y={0} width={boardWidth} height={boardHeight}
-                rx={3} ry={3} fill="none" stroke={color} strokeWidth={2}
+                rx={6} ry={6} fill="none" stroke={color} strokeWidth={OUTLINE_STROKE}
             />
             {/* Thin status-tinted ring, inset just inside the outline -- a quiet
                 "this chip is live/erroring/etc" indicator that never competes
                 with the main outline's own selection/hover color. */}
             <rect
-                x={2} y={2} width={boardWidth - 4} height={boardHeight - 4}
-                rx={2} ry={2} fill="none" stroke={ringColor} strokeWidth={1.5}
+                x={4} y={4} width={boardWidth - 8} height={boardHeight - 8}
+                rx={4} ry={4} fill="none" stroke={ringColor} strokeWidth={RING_STROKE}
             />
         </>
     );
