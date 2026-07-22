@@ -72,6 +72,10 @@ const dumpTypeMap: Record<string, ElementCtor> = {
     // see elements/scope.ts's class comment for the documented divergence
     // from Java's screen-space-overlay ScopeElm, which this id names there).
     '403': elements.ScopeElm,
+    // Digital corpus elements (audit issue #2 part 1) -- CustomLogicElm's
+    // "!"-line rules engine and the classic 7-segment display chip.
+    '208': elements.CustomLogicElm,
+    '157': elements.SevenSegElm,
 };
 
 export function createElement(
