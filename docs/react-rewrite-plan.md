@@ -1531,3 +1531,23 @@ alongside the canvas Esc cascade (harmless double-handling); scope channels don'
 survive undo/redo reparse (documented in store.ts); ScopeChannel history is push/shift
 O(n) (fine at 2000 samples); KiCad symbol pin-name rendering on canvas is off
 (preview-only) pending an ExtChip pin-mapping UI.
+
+## Known inconsistencies vs the Java implementation (audit 2026-07-16, prioritized)
+
+1. **XML dump format unsupported** — `auto-tests/*.txt` are the fork's XMLSerializer
+   format (`<cir ...>`); the TS parser reads only the classic text format. Files load
+   as 0 elements + all lines preserved. Port `XMLDeserializer` or convert the corpus.
+2. **Expression-based dependent sources / custom logic / 7-seg displays unported** —
+   circuits relying on them load with those lines preserved but analyze singular
+   (`tests/cccs.txt`, `current-adder.txt`, `custom.txt`, `7seg.txt`). CustomLogicElm
+   (208) is Tier-1 and should come next; ExprParser-based sources are Tier-2.
+3. **Options line only partially honored** — `$` reads timeStep; Falstad's speed/
+   current-speed/voltage-range/power-range fields are ignored, and `o` (scope), `h`
+   (hint), `38` (sliders) lines are consumed without effect.
+4. **No adaptive timestep** — TS engine is fixed-dt only; Java subdivides on
+   non-convergence. Stiff circuits that Java survives may error here.
+5. **Dump format is self-consistent but not byte-compatible with Java's** — Java can't
+   reload our saves (deliberate; revisit before scope.io migration).
+6. **Golden-trace comparison still pending** — corpus sweep checks parse/analyze/
+   round-trip, not waveforms; the Phase-0 oracle recorder remains the gate for
+   numerical parity.
