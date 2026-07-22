@@ -17,6 +17,15 @@ export class CircuitEngine implements Stamper {
     converged: boolean = true;
     subIterations: number = 0;
 
+    // Element lines whose dump type this port doesn't implement yet,
+    // preserved VERBATIM from parse to dump. Silently dropping them (the
+    // previous behavior) meant loading+resaving a circuit that contains any
+    // unported element DESTROYED that part of the user's file -- the Java
+    // implementation never loses unknown content, and the rewrite plan's
+    // format section (§7) requires the same. These lines don't stamp,
+    // render, or simulate; they just survive the round-trip.
+    preservedLines: string[] = [];
+
     // Reset to an empty circuit (used by CircuitParser before loading new text).
     clear() {
         this.elmList = [];
@@ -24,6 +33,7 @@ export class CircuitEngine implements Stamper {
         this.voltageSources = [];
         this.matrices = null;
         this.t = 0;
+        this.preservedLines = [];
     }
 
     // Serializes the whole circuit to this port's own extended text format:
@@ -40,6 +50,8 @@ export class CircuitEngine implements Stamper {
         for (const elm of this.elmList) {
             lines.push(elm.dump());
         }
+        // Unported-element lines ride along unchanged (see preservedLines).
+        lines.push(...this.preservedLines);
         return lines.join('\n');
     }
 

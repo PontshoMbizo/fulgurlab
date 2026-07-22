@@ -41,6 +41,16 @@ abstract class DependentSourceElm extends CircuitElm {
     constructor(x: number, y: number, x2: number, y2: number, flags: number, params: string[] | undefined, defaultGain: number) {
         super(x, y, x2, y2, flags);
         this.noDiagonal = true;
+        // Reject Java's expression form outright (inputCount + escaped
+        // expression string, e.g. `3 -(a-c)/(1000*(1\pb))`) instead of
+        // half-parsing the leading integer as a gain: the resulting circuit
+        // has the wrong pin/behavior model and analyzed as "Singular
+        // matrix!" on the Java test corpus. Throwing here makes the parser
+        // preserve the original line verbatim (see CircuitParser), keeping
+        // the rest of the circuit simulating and the file lossless.
+        if (Array.isArray(params) && params.length > 1) {
+            throw new Error("expression-based dependent source (Java VCCS/VCVS form) is not supported by this port");
+        }
         this.gain = Array.isArray(params) && params.length > 0 ? parseFloat(params[0]) || 0 : defaultGain;
     }
 

@@ -870,7 +870,13 @@ export default function CircuitCanvas({
     // Drag-and-drop a circuit .txt file onto the canvas as an alternative to
     // UndoRedoCluster's file-picker button -- both funnel through
     // engineStore.importFile(), which owns the actual FileReader logic.
+    // Gated on the drag actually carrying FILES: HTML5 drag events also fire
+    // for in-app drags (palette items, stray image/text drags that start on
+    // an SVG node mid-gesture), which used to flash the dashed drop border
+    // during ordinary component drags (the reported bug). dataTransfer.types
+    // is readable during dragover even though the file contents aren't.
     const handleDragOver = (e: ReactDragEvent) => {
+        if (!e.dataTransfer?.types?.includes("Files")) return;
         e.preventDefault();
         setIsDragOverFile(true);
     };
@@ -925,6 +931,11 @@ export default function CircuitCanvas({
                 style={{ cursor, display: "block" }}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
+                // Kill native HTML5 drags that browsers sometimes start from
+                // an SVG subtree mid-gesture -- they hijack the mousemove
+                // stream (the drag "sticks") and used to trigger the file-
+                // drop border. Component dragging is all mouse events here.
+                onDragStart={(e) => e.preventDefault()}
                 onMouseLeave={() => { setHovered(null); setCrosshair(null); }}
                 onDoubleClick={handleDoubleClick}
                 onContextMenu={(e) => e.preventDefault()}

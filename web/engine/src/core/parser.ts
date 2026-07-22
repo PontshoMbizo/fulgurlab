@@ -44,9 +44,27 @@ export class CircuitParser {
             const flags = parseInt(tokens[5], 10);
             const extraTokens = tokens.slice(6);
 
-            const elm = createElement(type, x1, y1, x2, y2, flags, extraTokens);
+            let elm = null;
+            try {
+                elm = createElement(type, x1, y1, x2, y2, flags, extraTokens);
+            } catch {
+                // A constructor may REJECT a token format it can't faithfully
+                // represent (e.g. Java's expression-based dependent sources
+                // vs this port's fixed-gain simplification). Half-parsing
+                // such a line used to yield a subtly-broken circuit
+                // ("Singular matrix!" on the Java corpus); preserving it
+                // verbatim keeps the file intact and the rest simulating.
+                elm = null;
+            }
             if (elm) {
                 this.engine.elmList.push(elm);
+            } else {
+                // Unknown dump type: preserve the line verbatim so a load->
+                // save round-trip never destroys unported-element content
+                // (matches Java, which always has a class for its own dumps;
+                // for us "unknown" is expected for Tier-2/3 circuits).
+                this.engine.preservedLines.push(trimmed);
+                console.warn(`Unsupported element type "${type}" preserved verbatim (not simulated)`);
             }
         }
         this.engine.setup();
