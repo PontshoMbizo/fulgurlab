@@ -4,6 +4,8 @@ import { voltageColor, overlayColor, NEUTRAL_GRAY, GROUND_COLOR, BACKGROUND } fr
 import { bindingStore } from "@/kicad/bindings";
 import KicadBoundBody from "./KicadBoundBody";
 import ScopeBody from "./ScopeBody";
+import CustomLogicBody from "./CustomLogicBody";
+import SevenSegBody from "./SevenSegBody";
 
 // Every symbol is authored in a LOCAL horizontal frame -- x from 0 (point1)
 // to dn (point2), y perpendicular -- exactly mirroring how Falstad's own
@@ -834,6 +836,8 @@ const BODIES: Record<string, BodyRenderer> = {
     // Placeable oscilloscope block (Simulink-style; auto-creates a scope
     // channel on placement -- see store.addElement / elements/scope.ts).
     "403": ({ elm, color }) => <ScopeBody elm={elm} color={color} />,
+    "208": ({ elm, color }) => <CustomLogicBody elm={elm} color={color} />,
+    "157": ({ elm, color }) => <SevenSegBody elm={elm} color={color} />,
     d: ({ elm, color }) => <DiodeBody elm={elm} color={color} />,
     z: ({ elm, color }) => <DiodeBody elm={elm} color={color} variant="zener" />,
     "162": ({ elm, color }) => <DiodeBody elm={elm} color={color} variant="led" />,

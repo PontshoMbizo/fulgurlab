@@ -149,6 +149,14 @@ class EngineStore {
                 this.addScopeChannel(elm, "voltage");
             }
         }
+        // Falstad `o` scope lines (parsed into engine.scopeHints as elmList
+        // indices): recreate those scopes so a Java circuit opens with its
+        // scopes attached, same as the GWT build. Skip indices already
+        // covered by a 403 scope element channel or out of range.
+        for (const idx of this.engine.scopeHints ?? []) {
+            const elm = this.engine.elmList[idx];
+            if (elm && !this.isProbed(elm)) this.addScopeChannel(elm, "voltage");
+        }
         this.bump();
     }
 

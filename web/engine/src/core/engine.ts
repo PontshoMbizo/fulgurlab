@@ -1,3 +1,4 @@
+import { dumpCustomLogicModels } from '../elements/custom_logic';
 import { CircuitElm, Stamper } from '../elements/base';
 import { Analyzer, CircuitNode, CircuitMatrix, VoltageSource } from './node';
 import { lu_factor_dense, lu_solve_dense } from './lu';
@@ -11,11 +12,35 @@ export class CircuitEngine implements Stamper {
     t: number = 0;
     timeStep: number = 5e-6;
     maxTimeStep: number = 5e-6;
+    // Java's SimulationManager default (see CircuitLoader.readOptions()'s
+    // optional trailing token, and XMLDeserializer's "mts" root attr) --
+    // overwritten by a `$` line's 7th token or an XML `<cir mts=...>` attr
+    // when either is present, otherwise stays at this default.
+    minTimeStep: number = 1e-11;
+    // CircuitElm.voltageRange in the Java source (global, used for scope/
+    // display scaling) -- overwritten by a `$` line's "voltageRange" token or
+    // an XML `<cir vr=...>` attr.
+    voltageRange: number = 5;
     timeStepAccum: number = 0;
-    
+
     circuitNonLinear: boolean = false;
     converged: boolean = true;
     subIterations: number = 0;
+    // Adaptive-timestep recovery tracking (Java SimulationManager parity):
+    // counts consecutive easy-convergence steps while running BELOW
+    // maxTimeStep; after enough of them the step doubles back toward the
+    // user's chosen maxTimeStep. Only ever active after a halving, so
+    // fixed-dt determinism (golden/corpus tests) is untouched on circuits
+    // that never fail to converge.
+    private goodIterations: number = 0;
+
+    // Element-index hints from classic `o` scope lines (CircuitLoader.java:
+    // `Scope sc = new Scope(...); sc.undump(st);` -- the first token
+    // ScopeSerializer.undump() reads is the elmList[] index being probed).
+    // This engine doesn't model Scope objects; CircuitParser just collects
+    // the raw indices here for the app layer to turn into scope channels
+    // after parse.
+    scopeHints: number[] = [];
 
     // Element lines whose dump type this port doesn't implement yet,
     // preserved VERBATIM from parse to dump. Silently dropping them (the
@@ -33,24 +58,40 @@ export class CircuitEngine implements Stamper {
         this.voltageSources = [];
         this.matrices = null;
         this.t = 0;
+        this.maxTimeStep = this.timeStep = 5e-6;
+        this.minTimeStep = 1e-11;
+        this.voltageRange = 5;
+        this.scopeHints = [];
         this.preservedLines = [];
     }
 
     // Serializes the whole circuit to this port's own extended text format:
-    // a `$` options line (currently just timeStep, matching what
-    // CircuitParser.parseOption() already reads back) followed by one
-    // element line per elmList entry via CircuitElm.dump(). This is the
-    // round-trip foundation undo/redo (in-memory snapshots) and save/load
-    // (file export/import) both build on -- see docs/react-rewrite-plan.md's
-    // 2026-07-15 session notes for why this is a new self-consistent format
-    // rather than a strict mirror of Java's classic (and, per its own source,
-    // incomplete) text dump.
+    // a `$` options line followed by one element line per elmList entry via
+    // CircuitElm.dump(). The `$` line now matches the shape Java's own
+    // CircuitLoader.java readOptions()/dump writer produce -- flags,
+    // maxTimeStep, speed, currentSpeed, voltageRange, powerRange -- using
+    // this engine's real maxTimeStep/voltageRange (this is the save-side half
+    // of audit issue #5: a circuit built only from elements this port
+    // supports should be loadable, unmodified, by the Java build). flags/
+    // speed/currentSpeed/powerRange are UI-only concepts in the Java source
+    // this engine has no state for, so those four are fixed defaults
+    // (dots-grid-on, Java's ~10 default sim speed, currentBar's default 50,
+    // powerBar's default 50) rather than round-tripped values.
     dump(): string {
-        const lines = [`$ 1 ${this.timeStep} 0 0`];
+        const lines = [`$ 1 ${this.maxTimeStep} 10 50 ${this.voltageRange} 50`];
+        // `!` model-definition lines for every custom-logic model referenced by
+        // a placed 208 element, BEFORE the element lines (Java's own order --
+        // and required for the output to be loadable by the Java build, which
+        // resolves models eagerly at element construction).
+        const clNames = this.elmList
+            .filter((e) => String(e.getDumpType()) === '208')
+            .map((e) => (e as unknown as { modelName: string }).modelName);
+        lines.push(...dumpCustomLogicModels(clNames));
         for (const elm of this.elmList) {
             lines.push(elm.dump());
         }
-        // Unported-element lines ride along unchanged (see preservedLines).
+        // Unported-element lines (and preserved `%`/`o`/`h`/... option lines)
+        // ride along unchanged (see preservedLines).
         lines.push(...this.preservedLines);
         return lines.join('\n');
     }
@@ -123,6 +164,34 @@ export class CircuitEngine implements Stamper {
     stepOnce() {
         if (!this.matrices || this.elmList.length === 0) return;
 
+        // ADAPTIVE TIMESTEP (audit issue #4, Java parity): when the Newton
+        // loop cannot converge at the current timeStep, halve it (down to
+        // minTimeStep) and RETRY the step -- companion models (C/L) bake
+        // timeStep into their stamps, so each retry re-stamps first. Java's
+        // runCircuit does exactly this instead of erroring out; stiff
+        // circuits (switching transients, relaxation oscillators at large
+        // dt) survive here the same way now. Recovery: see end of method.
+        const maxAttempts = 24; // maxTimeStep/minTimeStep spans < 2^24 in practice
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            if (this.runNewtonStep()) {
+                this.finishStep();
+                return;
+            }
+            // Non-convergence: shrink and retry, or give up at the floor.
+            const floor = Math.max(this.minTimeStep, 1e-12);
+            if (this.timeStep <= floor * 1.0001) break;
+            this.timeStep = Math.max(this.timeStep / 2, floor);
+            this.goodIterations = 0;
+            this.analyzeAndStamp();
+        }
+        throw new Error("Convergence failed!");
+    }
+
+    // One full Newton-iterated solve at the CURRENT timeStep. Returns false
+    // on non-convergence (caller decides whether to shrink dt and retry).
+    private runNewtonStep(): boolean {
+        const matrices = this.matrices;
+        if (!matrices) return true; // guarded by stepOnce; keeps TS narrowing happy
         for (const ce of this.elmList) {
             ce.startIteration(this);
         }
@@ -133,7 +202,7 @@ export class CircuitEngine implements Stamper {
             this.converged = true;
             this.subIterations = subiter;
 
-            for (const m of this.matrices) {
+            for (const m of matrices) {
                 for (let i = 0; i < m.size; i++) {
                     m.rightSide[i] = m.origRightSide[i];
                 }
@@ -150,7 +219,7 @@ export class CircuitEngine implements Stamper {
                 ce.doStep(this);
             }
 
-            for (const m of this.matrices) {
+            for (const m of matrices) {
                 if (m.nonLinear) {
                     if (this.converged && subiter > 0) continue;
                     if (!lu_factor_dense(m.matrix, m.size, m.permute)) {
@@ -166,7 +235,26 @@ export class CircuitEngine implements Stamper {
         }
 
         if (subiter === subiterCount) {
-            throw new Error("Convergence failed!");
+            return false; // caller may halve timeStep and retry (adaptive)
+        }
+        this.lastSubiter = subiter;
+        return true;
+    }
+
+    private lastSubiter = 0;
+
+    private finishStep() {
+        const subiter = this.lastSubiter;
+        // Recovery half of the adaptive scheme: while running below the
+        // user's maxTimeStep (i.e. only ever after a halving), a run of
+        // easy-convergence steps doubles dt back up, exactly Java's shape.
+        if (this.timeStep < this.maxTimeStep) {
+            this.goodIterations = subiter < 5 ? this.goodIterations + 1 : 0;
+            if (this.goodIterations >= 100) {
+                this.timeStep = Math.min(this.timeStep * 2, this.maxTimeStep);
+                this.goodIterations = 0;
+                this.analyzeAndStamp();
+            }
         }
 
         this.t += this.timeStep;
@@ -181,7 +269,7 @@ export class CircuitEngine implements Stamper {
 
         this.calcWireCurrents();
 
-        for (const m of this.matrices) {
+        for (const m of this.matrices ?? []) {
             for (let i = 0; i < m.nodeCount; i++) {
                 m.lastNodeVoltages[i] = m.nodeVoltages[i];
             }
