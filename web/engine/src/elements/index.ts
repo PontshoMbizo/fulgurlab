@@ -36,3 +36,4 @@ export * from './delay';
 export * from './scope';
 export * from './custom_logic';
 export * from './seven_seg';
+export * from './ext_chip';

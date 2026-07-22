@@ -5,6 +5,7 @@ import type { MouseEvent as ReactMouseEvent, DragEvent as ReactDragEvent } from 
 import { createElement, CircuitElm } from "@fulgurlab/engine";
 import { engineStore } from "@/engine/store";
 import { bindingStore } from "@/kicad/bindings";
+import { extChipRegistry } from "@/extchip/client";
 import type { PaletteItem } from "@/palette/palette";
 import { GRID_SIZE, snap, distanceToElement, distanceToPoint, elementInMarquee, marqueeMode, circuitBounds } from "./draw";
 import { ElementSymbol } from "./symbols";
@@ -74,6 +75,8 @@ export default function CircuitCanvas({
     // Symbol bind/unbind (Symbol Library panel) changes how elements render
     // without touching the engine -- subscribe separately so those repaint too.
     useSyncExternalStore(bindingStore.subscribe, bindingStore.getVersion, bindingStore.getVersion);
+    // ExtChip session status changes tint the chip bodies -- rerender on those too.
+    useSyncExternalStore(extChipRegistry.subscribe, extChipRegistry.getVersion, extChipRegistry.getVersion);
     const svgRef = useRef<SVGSVGElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const dragStart = useRef<{ x: number; y: number } | null>(null);

@@ -8,6 +8,9 @@ import SpeedSlider from "@/chrome/SpeedSlider";
 import UndoRedoCluster from "@/chrome/UndoRedoCluster";
 import ElementEditModal from "@/inspector/ElementEditModal";
 import Scope from "@/scope/Scope";
+import ExtChipDrawer from "@/extchip/ExtChipDrawer";
+import { engineStore } from "@/engine/store";
+import type { CircuitElm } from "@fulgurlab/engine";
 import { PALETTE, type PaletteItem } from "@/palette/palette";
 
 const WIRE_TOOL = PALETTE.find((p) => p.dumpType === "w")!;
@@ -33,6 +36,9 @@ export default function Home() {
   // needs to track across renders.
   const [probeMode, setProbeMode] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
+  // Co-simulated chip drawer (FPGA/MCU): opened instead of the generic edit
+  // modal when the double-clicked/E-key element is an ExtChip (dump 460).
+  const [extChipElm, setExtChipElm] = useState<CircuitElm | null>(null);
   // Bumped on every "A" keypress (CircuitCanvas's keydown handler) to tell
   // FloatingToolbar's local flyoutOpen state to pop open -- see that
   // component's own openFlyoutSignal doc comment for why this is a counter
@@ -64,7 +70,11 @@ export default function Home() {
         onOpenPalette={() => setOpenFlyoutSignal((v) => v + 1)}
         onToggleProbeMode={handleToggleProbe}
         probeMode={probeMode}
-        onElementDoubleClick={() => setEditModalOpen(true)}
+        onElementDoubleClick={() => {
+          const one = engineStore.selectedOne();
+          if (one && String(one.getDumpType()) === "460") setExtChipElm(one);
+          else setEditModalOpen(true);
+        }}
       />
       <FloatingToolbar
         activeTool={activeTool}
@@ -78,6 +88,7 @@ export default function Home() {
       <SpeedSlider />
       <Scope probeActive={probeMode} />
       {editModalOpen && <ElementEditModal onClose={() => setEditModalOpen(false)} />}
+      <ExtChipDrawer elm={extChipElm} onClose={() => setExtChipElm(null)} />
     </div>
   );
 }

@@ -108,6 +108,11 @@ export const PALETTE: PaletteItem[] = [
     { dumpType: 'I', label: 'Inverter', category: 'Logic', flags: 0, tokens: [] },
     { dumpType: 'L', label: 'Logic Input', category: 'Logic', flags: 0, tokens: [] },
     { dumpType: 'M', label: 'Logic Output', category: 'Logic', flags: 0, tokens: [] },
+
+    // Co-simulated chips (fulgurlab lockstep bridge -- docs/bridge-protocol.md).
+    // Tokens empty: the element's own defaults apply (ws://localhost:3100, 1ms
+    // quantum) and the drawer prefills the blinky Verilog preset on first open.
+    { dumpType: '460', label: 'FPGA — Tang Nano 9K (fpgasim)', category: 'Co-simulated', flags: 0, tokens: [] },
 ];
 
 export const CATEGORIES: string[] = Array.from(new Set(PALETTE.map(p => p.category)));

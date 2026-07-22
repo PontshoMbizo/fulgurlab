@@ -6,6 +6,7 @@ import KicadBoundBody from "./KicadBoundBody";
 import ScopeBody from "./ScopeBody";
 import CustomLogicBody from "./CustomLogicBody";
 import SevenSegBody from "./SevenSegBody";
+import ExtChipBody from "./ExtChipBody";
 
 // Every symbol is authored in a LOCAL horizontal frame -- x from 0 (point1)
 // to dn (point2), y perpendicular -- exactly mirroring how Falstad's own
@@ -838,6 +839,8 @@ const BODIES: Record<string, BodyRenderer> = {
     "403": ({ elm, color }) => <ScopeBody elm={elm} color={color} />,
     "208": ({ elm, color }) => <CustomLogicBody elm={elm} color={color} />,
     "157": ({ elm, color }) => <SevenSegBody elm={elm} color={color} />,
+    // Co-simulated FPGA/MCU chip (lockstep bridge; drawer edits its Verilog/C)
+    "460": ({ elm, color }) => <ExtChipBody elm={elm} color={color} />,
     d: ({ elm, color }) => <DiodeBody elm={elm} color={color} />,
     z: ({ elm, color }) => <DiodeBody elm={elm} color={color} variant="zener" />,
     "162": ({ elm, color }) => <DiodeBody elm={elm} color={color} variant="led" />,

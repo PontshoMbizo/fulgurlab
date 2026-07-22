@@ -76,6 +76,9 @@ const dumpTypeMap: Record<string, ElementCtor> = {
     // "!"-line rules engine and the classic 7-segment display chip.
     '208': elements.CustomLogicElm,
     '157': elements.SevenSegElm,
+    // fulgurlab lockstep bridge chip (docs/bridge-protocol.md) -- engine
+    // half only, see elements/ext_chip.ts's class comment.
+    '460': elements.ExtChipElm,
 };
 
 export function createElement(

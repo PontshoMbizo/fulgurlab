@@ -1,6 +1,8 @@
 "use client";
 
 import { CircuitEngine, CircuitElm, CircuitParser, createElement } from "@fulgurlab/engine";
+import { extChipRegistry } from "@/extchip/client";
+import { extChipId } from "@/extchip/ExtChipDrawer";
 
 // Bounded so a very long editing session can't grow this without limit --
 // 100 steps is generous for a circuit editor (Falstad's own app has no
@@ -252,6 +254,7 @@ class EngineStore {
 
     removeElement(elm: CircuitElm) {
         this.beginTransaction();
+        if (String(elm.getDumpType()) === "460") extChipRegistry.dispose(extChipId(elm));
         this.engine.elmList = this.engine.elmList.filter(e => e !== elm);
         if (this.selection.has(elm)) {
             const next = new Set(this.selection);
@@ -270,6 +273,8 @@ class EngineStore {
         const toRemove = new Set(elms);
         if (toRemove.size === 0) return;
         this.beginTransaction();
+        for (const e of toRemove)
+            if (String(e.getDumpType()) === "460") extChipRegistry.dispose(extChipId(e));
         this.engine.elmList = this.engine.elmList.filter(e => !toRemove.has(e));
         if (this.selection.size > 0) {
             const next = new Set(this.selection);
@@ -538,6 +543,21 @@ class EngineStore {
     stepOnceSafe(): boolean {
         try {
             this.engine.stepOnce();
+            // FPGA/MCU co-simulation exchange (bridge-protocol v1): after each
+            // engine step, push every ExtChip's freshly-sampled input bits to
+            // its ws session, let the client pace quantum steps against the
+            // circuit clock (pausing the sim if the backend lags a full
+            // quantum), and pull the latest quantum-boundary outputs for the
+            // NEXT step's voltage-source drives. Order per the client's
+            // contract: setInputs -> onSimTime -> getOutputs.
+            for (const elm of this.engine.elmList) {
+                if (String(elm.getDumpType()) !== "460") continue;
+                const chip = elm as unknown as { inputBits: number; outputBits: number };
+                const id = extChipId(elm);
+                extChipRegistry.setInputs(id, chip.inputBits);
+                extChipRegistry.onSimTime(id, this.engine.t * 1e9);
+                chip.outputBits = extChipRegistry.getOutputs(id);
+            }
             this.recordScopeSamples();
             return true;
         } catch (e) {
