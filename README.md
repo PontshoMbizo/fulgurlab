@@ -15,10 +15,31 @@ two co-simulated extensions wired in over a lockstep WebSocket bridge
 - **[mcusim](https://github.com/PontshoMbizo/mcusim)** — STM32F103 Blue Pill: bare-metal
   C under QEMU with semihosting-driven quantum exchange (bridge on `:3101`)
 
-Place an **External Chip** (Draw → Digital Chips → External Chip (fulgurlab)) on the
+Place an **External Chip** (Draw → Digital Chips → External Chip (fulgurlab), in the
+GWT app below — or **FPGA — Tang Nano 9K (fpgasim)** in the React app's palette) on the
 canvas, give it a bridge URL, pin spec and source; its pins become live circuit nodes
 advanced in lockstep with the external simulator. `npm test` runs the bridge-client
 unit tests; `npm run test:integration` drives the real backends from sibling checkouts.
+
+## React rewrite (`web/`) — actively developed
+
+`web/` is a from-scratch TypeScript/React port of the circuit engine and UI (npm
+workspaces: `web/engine` the headless simulation core, `web/app` the Next.js canvas
+app), replacing the GWT/Java build below once it reaches parity — see
+[docs/react-rewrite-plan.md](docs/react-rewrite-plan.md) for scope and status. The
+lockstep bridge/ExtChip integration is fully wired up here: placing the FPGA chip
+renders the actual Tang Nano 9K board photo (pins arranged in the same two header rows
+as the real part), and its default Verilog + pin spec match fpgasim's own standalone
+demo (`clk`/`btn1`/`btn2`/`leds[5:0]`) so the two feel like the same board.
+
+```bash
+cd web
+npm install
+npm -w app run dev      # canvas app at http://localhost:3000
+npm -w engine run test  # engine unit + golden + corpus-compat suites
+npm -w app run test     # app unit suites (incl. bridge client)
+npm -w app run build    # production build / type-check
+```
 
 ---
 
