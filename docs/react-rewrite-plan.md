@@ -1551,3 +1551,17 @@ O(n) (fine at 2000 samples); KiCad symbol pin-name rendering on canvas is off
 6. **Golden-trace comparison still pending** — corpus sweep checks parse/analyze/
    round-trip, not waveforms; the Phase-0 oracle recorder remains the gate for
    numerical parity.
+
+### Audit resolution — 2026-07-16, same day
+
+All six items above were addressed (commits 9f770a3d..d0df66c2): (1) XML dump import
+ported; (2) CustomLogicElm + SevenSegElm + full expression-based dependent sources
+ported (tri-state custom-logic models and 7-seg *decoder* 197 remain
+preserve-verbatim); (3) `$` options fully parsed/re-emitted, `o` lines create scopes,
+`!` lines round-trip; (4) adaptive timestep ported (halve-and-restamp on
+non-convergence, doubling recovery); (5) `$` line now Java-shaped and `!` lines emit
+in Java order — remaining byte-compat caveat is per-element float formatting, untested
+against a real Java reload; (6) **golden-trace gate closed**: 5 oracle-recorded
+fixtures (live GWT build driven over its stepSim API in Chrome) match the TS engine
+pointwise — see `web/engine/test/golden.test.ts` and `golden/fixtures/*.json` for the
+recording protocol (warmup steps, after-step sampling).
