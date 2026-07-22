@@ -8,7 +8,7 @@ import type { ExtChipElm } from "@fulgurlab/engine";
 import { engineStore } from "@/engine/store";
 import { extChipRegistry } from "./client";
 import type { ExtChipStatus } from "./client";
-import { DEFAULT_FPGA_CONFIG, DEFAULT_FPGA_SOURCE } from "./preset";
+import { DEFAULT_FPGA_CONFIG, DEFAULT_FPGA_SOURCE, TANG_NANO_9K_PIN_SPEC } from "./preset";
 
 // Monaco itself reaches for browser-only globals (`self`, `window`) the
 // instant its module evaluates, so it can never be part of any server-
@@ -229,6 +229,14 @@ export default function ExtChipDrawer({ elm, onClose }: Props) {
                         value={pinSpec}
                         onChange={(e) => setPinSpec(e.target.value)}
                     />
+                    <button
+                        type="button"
+                        onClick={() => setPinSpec(TANG_NANO_9K_PIN_SPEC)}
+                        className="mt-1.5 text-[10.5px] text-neutral-500 hover:text-cyan-300 cursor-pointer underline decoration-dotted underline-offset-2"
+                        title="Fill in the standalone fpgasim demo's own net names: btn1/btn2 in, leds[0..5] out"
+                    >
+                        Load Tang Nano 9K pinout (btn1/btn2 + leds[0..5])
+                    </button>
                 </label>
             </div>
 

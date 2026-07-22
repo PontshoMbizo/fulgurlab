@@ -8,27 +8,26 @@ import type { ExtChipStatus } from "@/extchip/client";
 // symbols.tsx body uses (translate to point1, rotate toward point2 -- see
 // that file's header comment); a STANDALONE component, same convention as
 // ScopeBody.tsx/CustomLogicBody.tsx, so it drops into symbols.tsx's BODIES
-// map (`"460": ExtChipBody`) without editing that file.
+// map (`"460": ExtChipBody`) without editing that file. Like
+// CustomLogicBody.tsx's own pin math, ExtChipElm's posts are NOT
+// rotation-aware (documented in that file) -- this body's leads only land on
+// the real posts for axis-aligned placements; the real pin dots (drawn by
+// ElementSymbol's own extraPosts loop) stay correct regardless.
 //
-// GEOMETRY: mirrors CustomLogicBody.tsx's own layout almost exactly, since
-// ext_chip.ts's own header comment documents its geometry constants
-// (CSPC2=32, SIZE_X=2) as deliberately matching CustomLogicElm's -- inputs
-// hang off the left edge at local (0, cspc2*i), outputs off the right edge
-// at local (SIZE_X*cspc2 + cspc2, cspc2*i), same as ExtChipElm.setPoints()'s
-// real inPosts/outPosts. The real pin dots (world-space, via elm.getPost())
-// are already drawn generically by ElementSymbol's own extraPosts loop --
-// this component only draws the decorative outline + lead stubs + label +
-// status ring, using those SAME constants so the drawn leads land exactly on
-// the real posts.
+// GEOMETRY: mirrors ext_chip.ts's own setPoints() exactly -- outputs in a
+// north row (above the board, y<0), inputs in a south row (below it,
+// y>boardHeight), both cspc2-spaced along x. `boardWidth`/`boardHeight` are
+// read directly off the element instance (public getters on ExtChipElm)
+// instead of being recomputed here, so the drawn board photo and the real
+// posts can never drift out of sync.
 interface ExtChipBodyProps {
     elm: CircuitElm;
     color: string;
 }
 
 const CSPC2 = 32; // ExtChipElm.CSPC2
-const SIZE_X = 2; // ExtChipElm.SIZE_X
-const CSPC = CSPC2 / 2; // 16 -- lead-stub length from a post to the box edge, same ratio CustomLogicBody uses
-const DIM_OPACITY = 0.55;
+const LEAD = 16;  // ExtChipElm.LEAD
+const DIM_OPACITY = 0.85;
 
 // Same status color vocabulary as ExtChipDrawer.tsx's STATUS_STYLE (kept as
 // its own small local table rather than importing that module's internal
@@ -42,56 +41,84 @@ const STATUS_RING_COLOR: Record<ExtChipStatus, string> = {
     error: "#f87171",
 };
 
-export default function ExtChipBody({ elm, color }: ExtChipBodyProps) {
-    const chip = elm as unknown as { pins?: { name: string; dir: "in" | "out" }[] };
-    const pins = chip.pins ?? [];
-    const inputCount = Math.max(1, pins.filter((p) => p.dir === "in").length || 0);
-    const outputCount = Math.max(1, pins.filter((p) => p.dir === "out").length || 0);
+type ExtChipLike = {
+    pins?: { name: string; dir: "in" | "out" }[];
+    boardWidth?: number;
+    boardHeight?: number;
+};
 
-    const xs = SIZE_X * CSPC2; // 64 -- chip body width
-    const sizeY = Math.max(inputCount, outputCount, 1);
-    const boxLeft = CSPC; // 16
-    const boxRight = CSPC + xs; // 80
-    const boxTop = -CSPC; // -16
-    const boxBottom = -CSPC + sizeY * CSPC2;
-    const outputX = SIZE_X * CSPC2 + CSPC2; // 96 -- matches ExtChipElm's outPosts x
+export default function ExtChipBody({ elm, color }: ExtChipBodyProps) {
+    const chip = elm as unknown as ExtChipLike;
+    const pins = chip.pins ?? [];
+    const inPins = pins.filter((p) => p.dir === "in");
+    const outPins = pins.filter((p) => p.dir === "out");
+
+    // Fall back to the same minimum-footprint formula ext_chip.ts uses
+    // (SIZE_X columns wide, ASPECT-derived height) if the instance doesn't
+    // expose the getters for some reason (e.g. an older/mocked elm).
+    const boardWidth = chip.boardWidth ?? 64;
+    const boardHeight = chip.boardHeight ?? boardWidth / 2.71;
 
     const status = extChipRegistry.getStatus(extChipId(elm)).status;
     const ringColor = STATUS_RING_COLOR[status];
 
     return (
         <>
-            {/* Input leads: post (local 0, cspc2*i) -> box left edge. */}
-            {Array.from({ length: inputCount }, (_, i) => {
-                const py = CSPC2 * i;
-                return <line key={`in${i}`} x1={0} y1={py} x2={boxLeft} y2={py} stroke={color} strokeWidth={2} />;
+            {/* Output leads: board top edge (y=0) -> post (north row, y=-LEAD). */}
+            {outPins.map((pin, i) => {
+                const px = CSPC2 * (i + 0.5);
+                return (
+                    <g key={`out${i}`}>
+                        <line x1={px} y1={0} x2={px} y2={-LEAD} stroke={color} strokeWidth={2} />
+                        <text
+                            x={px} y={-LEAD - 3}
+                            fill={color} fillOpacity={DIM_OPACITY} fontSize={7} fontFamily="monospace"
+                            textAnchor="middle"
+                        >
+                            {pin.name}
+                        </text>
+                    </g>
+                );
             })}
-            {/* Output leads: box right edge -> post (local outputX, cspc2*i). */}
-            {Array.from({ length: outputCount }, (_, i) => {
-                const py = CSPC2 * i;
-                return <line key={`out${i}`} x1={boxRight} y1={py} x2={outputX} y2={py} stroke={color} strokeWidth={2} />;
+            {/* Input leads: post (south row, y=boardHeight+LEAD) -> board bottom edge. */}
+            {inPins.map((pin, i) => {
+                const px = CSPC2 * (i + 0.5);
+                return (
+                    <g key={`in${i}`}>
+                        <line x1={px} y1={boardHeight} x2={px} y2={boardHeight + LEAD} stroke={color} strokeWidth={2} />
+                        <text
+                            x={px} y={boardHeight + LEAD + 9}
+                            fill={color} fillOpacity={DIM_OPACITY} fontSize={7} fontFamily="monospace"
+                            textAnchor="middle"
+                        >
+                            {pin.name}
+                        </text>
+                    </g>
+                );
             })}
 
-            <rect
-                x={boxLeft} y={boxTop} width={boxRight - boxLeft} height={boxBottom - boxTop}
-                rx={2} ry={2} fill="none" stroke={color} strokeWidth={2}
-            />
-            {/* Thin status-tinted ring, inset just inside the main outline --
-                a quiet "this chip is live/erroring/etc" indicator that never
-                competes with the main outline's own selection/hover color. */}
-            <rect
-                x={boxLeft + 2} y={boxTop + 2} width={boxRight - boxLeft - 4} height={boxBottom - boxTop - 4}
-                rx={2} ry={2} fill="none" stroke={ringColor} strokeWidth={1}
+            {/* The actual Tang Nano 9K board photo (cropped to just the PCB, see
+                public/images/tang-nano-9k.png), scaled to exactly fill the
+                board footprint -- its source aspect ratio already matches
+                ExtChipElm.ASPECT, so "none" doesn't distort it. */}
+            <image
+                href="/images/tang-nano-9k.png"
+                x={0} y={0} width={boardWidth} height={boardHeight}
+                preserveAspectRatio="none"
             />
 
-            <text
-                x={(boxLeft + boxRight) / 2} y={(boxTop + boxBottom) / 2}
-                fill={color} fillOpacity={DIM_OPACITY} fontSize={8} fontFamily="monospace"
-                textAnchor="middle" dominantBaseline="middle"
-                transform={`rotate(90 ${(boxLeft + boxRight) / 2} ${(boxTop + boxBottom) / 2})`}
-            >
-                FPGA
-            </text>
+            {/* Selection/hover outline over the photo. */}
+            <rect
+                x={0} y={0} width={boardWidth} height={boardHeight}
+                rx={3} ry={3} fill="none" stroke={color} strokeWidth={2}
+            />
+            {/* Thin status-tinted ring, inset just inside the outline -- a quiet
+                "this chip is live/erroring/etc" indicator that never competes
+                with the main outline's own selection/hover color. */}
+            <rect
+                x={2} y={2} width={boardWidth - 4} height={boardHeight - 4}
+                rx={2} ry={2} fill="none" stroke={ringColor} strokeWidth={1.5}
+            />
         </>
     );
 }

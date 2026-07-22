@@ -79,12 +79,25 @@ export class ExtChipElm extends CircuitElm {
     static HIGH_VOLTAGE = 3.3;
     static THRESHOLD = 1.65;
 
-    // Chip geometry constants, ported from CustomLogicElm.ts's own ChipElm
-    // port (see that file's setPoints() comment for the full derivation
-    // against ChipElm.java's real Pin.setPoint() formula -- absolute
-    // `x,y + cspc2*index` offsets, independent of point2/rotation).
+    // Chip geometry constants. UNLIKE CustomLogicElm's two-column (west
+    // in / east out) layout, this element's pins run in two HORIZONTAL rows
+    // -- north (outputs) / south (inputs) -- spaced cspc2 apart along x,
+    // matching the real Tang Nano 9K's two 20-pin header rows along its
+    // long edges (see ExtChipBody.tsx, which draws the actual board photo
+    // between the rows). Still absolute `x,y + offset` posts independent of
+    // point2/rotation, same non-rotating-block convention as before.
     static CSPC2 = 32;
+    // Minimum row length in pin-columns, so a chip with few/no pins still
+    // shows a board at roughly the real part's proportions instead of a
+    // sliver.
     static SIZE_X = 2;
+    // Real board's photographed aspect ratio (width/height of the cropped
+    // PCB art in ExtChipBody.tsx's tang-nano-9k.png) -- keeps the decorative
+    // board rectangle's proportions true to the actual part regardless of
+    // pin count.
+    static ASPECT = 2.71;
+    // Lead-stub length from the board's north/south edge to the actual post.
+    static LEAD = 16;
 
     bridgeUrl: string;
     pinSpec: string;
@@ -106,6 +119,16 @@ export class ExtChipElm extends CircuitElm {
     private outputVoltSources: VoltageSource[] = [];
     private inPosts: Point[] = [];
     private outPosts: Point[] = [];
+    // Decorative board footprint (world-space size, not position) -- computed
+    // once per setPoints() from the pin count and ASPECT, and read directly
+    // by ExtChipBody.tsx so the drawn board photo and the real posts can
+    // never drift out of sync with each other (single source of truth,
+    // rather than duplicating the sizing formula in the app layer).
+    private _boardWidth = ExtChipElm.SIZE_X * ExtChipElm.CSPC2;
+    private _boardHeight = this._boardWidth / ExtChipElm.ASPECT;
+
+    get boardWidth(): number { return this._boardWidth; }
+    get boardHeight(): number { return this._boardHeight; }
 
     constructor(x: number, y: number, x2: number, y2: number, flags: number, params?: string[]) {
         super(x, y, x2, y2, flags);
@@ -195,9 +218,17 @@ export class ExtChipElm extends CircuitElm {
     setPoints(): void {
         super.setPoints();
         const cspc2 = ExtChipElm.CSPC2;
-        this.inPosts = this.inPins.map((_, i) => ({ x: this.x, y: this.y + cspc2 * i }));
-        const outX = this.x + ExtChipElm.SIZE_X * cspc2 + cspc2;
-        this.outPosts = this.outPins.map((_, i) => ({ x: outX, y: this.y + cspc2 * i }));
+        const cols = Math.max(this.inPins.length, this.outPins.length, ExtChipElm.SIZE_X);
+        this._boardWidth = cols * cspc2;
+        this._boardHeight = this._boardWidth / ExtChipElm.ASPECT;
+        // South row: inputs, below the board. North row: outputs, above it.
+        // Both rows are column-indexed independently (a lopsided pin count,
+        // e.g. 3 in / 1 out, just leaves unused columns on the shorter row --
+        // same "occupies fewer slots" behavior the old two-column layout had).
+        const southY = this.y + this._boardHeight + ExtChipElm.LEAD;
+        const northY = this.y - ExtChipElm.LEAD;
+        this.inPosts = this.inPins.map((_, i) => ({ x: this.x + cspc2 * (i + 0.5), y: southY }));
+        this.outPosts = this.outPins.map((_, i) => ({ x: this.x + cspc2 * (i + 0.5), y: northY }));
     }
 
     getPost(n: number): Point | null {

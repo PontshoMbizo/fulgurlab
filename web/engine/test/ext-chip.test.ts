@@ -72,7 +72,7 @@ describe('ExtChipElm pin geometry', () => {
         expect(invalid.getPostCount()).toBe(0);
     });
 
-    it('inputs on the west side, outputs on the east side, cspc2-spaced', () => {
+    it('inputs on the south row, outputs on the north row, cspc2-spaced along x', () => {
         const elm = new ExtChipElm(0, 0, 100, 0, 0, ['ws://x', 'a:in,b:in,c:out', '1000000', '', '']);
         elm.preStamp();
         expect(elm.getPostCount()).toBe(3);
@@ -83,12 +83,22 @@ describe('ExtChipElm pin geometry', () => {
         ]);
 
         const pA = elm.getPost(0)!, pB = elm.getPost(1)!, pC = elm.getPost(2)!;
-        // both inputs on the west side (same x as the chip origin)
-        expect(pA.x).toBe(0);
-        expect(pB.x).toBe(0);
-        expect(pB.y).toBe(pA.y + 32);
-        // output sits strictly east of the inputs
-        expect(pC.x).toBeGreaterThan(pA.x);
+        // both inputs on the south row (same y), spaced cspc2=32 apart in x
+        expect(pB.y).toBe(pA.y);
+        expect(pB.x).toBe(pA.x + 32);
+        // output sits strictly north of (above) the inputs
+        expect(pC.y).toBeLessThan(pA.y);
+    });
+
+    it('board footprint widens with pin count but keeps a fixed real-board aspect ratio', () => {
+        const small = new ExtChipElm(0, 0, 100, 0, 0, ['ws://x', 'a:in', '1000000', '', '']);
+        small.preStamp();
+        const wide = new ExtChipElm(0, 0, 100, 0, 0, ['ws://x', 'a:in,b:in,c:in,d:in,e:in,f:in', '1000000', '', '']);
+        wide.preStamp();
+
+        expect(wide.boardWidth).toBeGreaterThan(small.boardWidth);
+        // both stay at the same photographed aspect ratio
+        expect(small.boardWidth / small.boardHeight).toBeCloseTo(wide.boardWidth / wide.boardHeight, 5);
     });
 
     it('setPinSpec() re-derives pins and stays preStamp-safe', () => {
