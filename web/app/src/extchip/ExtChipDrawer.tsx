@@ -55,6 +55,7 @@ const STATUS_STYLE: Record<ExtChipStatus, { label: string; bg: string; fg: strin
     connecting: { label: "connecting", bg: "rgba(250,204,21,.15)", fg: "#facc15" },
     compiling: { label: "compiling", bg: "rgba(250,204,21,.15)", fg: "#facc15" },
     running: { label: "running", bg: "rgba(52,211,153,.15)", fg: "#34d399" },
+    resetting: { label: "resetting", bg: "rgba(251,191,36,.15)", fg: "#fbbf24" },
     ended: { label: "ended", bg: "rgba(96,165,250,.15)", fg: "#60a5fa" },
     error: { label: "error", bg: "rgba(248,113,113,.15)", fg: "#f87171" },
 };

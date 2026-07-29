@@ -8,6 +8,11 @@
 // store glue uses), and an injectable SimControl instead of reaching for
 // `window.CircuitJS1`/FulgurBridge._simCtl directly.
 //
+// The full proto-v1 message set is implemented: outbound hello/create/step/
+// reset/dispose, inbound welcome/created/stepped/reset_done/ended/error/
+// disposed. (`reset`/`reset_done` were specified but implemented nowhere --
+// TODO.md P0-3.)
+//
 // Pacing/backpressure rules are UNCHANGED from fulgur-bridge.js: at most one
 // `step` in flight; the sim is paused once the backend falls a full quantum
 // behind (bounded skew) and resumed on the next `stepped`/`ended`/`error`.
@@ -19,7 +24,7 @@
 //   extChipRegistry.onSimTime(id, engine.t * 1e9);
 //   elm.outputBits = extChipRegistry.getOutputs(id);
 
-export type ExtChipStatus = "unconfigured" | "connecting" | "compiling" | "running" | "ended" | "error";
+export type ExtChipStatus = "unconfigured" | "connecting" | "compiling" | "running" | "resetting" | "ended" | "error";
 
 export interface ExtChipConfig {
     url: string;
@@ -243,6 +248,21 @@ export class ExtChipRegistry {
                 this.notify();
                 return;
             }
+            case "reset_done": {
+                // docs/bridge-protocol.md: the backend has restarted the SAME
+                // build at t = 0. Everything time- or output-related has to go
+                // back to its post-`created` state, but the session id and pin
+                // list survive (no recompile happened).
+                if (c.session !== msg.session) return;
+                c.inflight = false;
+                c.steppedTNs = 0;
+                c.simTNs = 0;
+                c.outBits = 0;
+                c.events = [];
+                this.resume(c);
+                this.setStatus(c, "running");
+                return;
+            }
             case "ended": {
                 if (c.session === msg.session) {
                     this.setStatus(c, "ended", String(msg.reason ?? ""));
@@ -254,7 +274,20 @@ export class ExtChipRegistry {
             }
             case "error": {
                 c.inflight = false;
-                this.fail(c, (msg.stage ? String(msg.stage) : "error") + ": " + String(msg.log ?? ""));
+                const stage = msg.stage ? String(msg.stage) : "error";
+                const detail = stage + ": " + String(msg.log ?? "");
+                // docs/bridge-protocol.md: "session dead unless stage:'proto'".
+                // A protocol-level complaint (e.g. the reference backends'
+                // "reset not supported in v1") leaves the session perfectly
+                // usable, so tearing it down here -- which is what this did
+                // unconditionally -- threw away a live session and wedged the
+                // chip in `error` for the rest of the run.
+                if (stage === "proto" && c.session) {
+                    this.resume(c);
+                    this.setStatus(c, "running", detail);
+                    return;
+                }
+                this.fail(c, detail);
                 return;
             }
             case "disposed":
@@ -325,11 +358,48 @@ export class ExtChipRegistry {
             this.handleMsg(c, msg);
         };
         ws.onclose = () => {
-            if (c.status === "running" || c.status === "compiling" || c.status === "connecting") {
+            if (c.status === "running" || c.status === "compiling" || c.status === "connecting" || c.status === "resetting") {
                 this.fail(c, "bridge connection closed");
             }
         };
         ws.onerror = () => {};
+    }
+
+    /**
+     * Restart the backend's simulation from t = 0 WITHOUT recompiling
+     * (docs/bridge-protocol.md's `reset`). Returns false when there is no live
+     * session to reset -- callers that want a full rebuild should use
+     * configure() instead, which tears the session down and compiles again.
+     *
+     * Local state is cleared optimistically so a caller that resets and then
+     * immediately steps cannot ship the pre-reset output bits into the circuit;
+     * `reset_done` then confirms and re-marks the chip as running.
+     *
+     * NOTE: the reference fpgasim/mcusim backends answer `reset` with
+     * `error stage:"proto"` ("reset not supported in v1 -- dispose and create").
+     * That is a survivable outcome by design: the proto-stage error handler
+     * leaves the session alive and puts the chip back to `running`, so a caller
+     * that optimistically resets simply gets its clock rewound locally and can
+     * fall back to configure() if it needs a true restart. See
+     * docs/bridge-protocol.md's "Reserved" note.
+     */
+    reset(id: number): boolean {
+        const c = this.chips.get(id);
+        if (!c || !c.session || !c.ws || c.ws.readyState !== 1 /* OPEN */) return false;
+        c.inflight = false;
+        c.steppedTNs = 0;
+        c.simTNs = 0;
+        c.outBits = 0;
+        c.events = [];
+        this.resume(c);
+        this.setStatus(c, "resetting");
+        try {
+            c.ws.send(JSON.stringify({ type: "reset", session: c.session }));
+        } catch (e) {
+            this.fail(c, "reset: " + (e instanceof Error ? e.message : String(e)));
+            return false;
+        }
+        return true;
     }
 
     dispose(id: number): void {
@@ -377,6 +447,9 @@ export class ExtChipRegistry {
     onSimTime(id: number, tNs: number): void {
         const c = this.chips.get(id);
         if (!c || !c.session) return;
+        // A `reset` is outstanding: the backend's clock is going back to 0, so
+        // stepping now would advance from a state neither side agrees on.
+        if (c.status === "resetting") return;
         c.simTNs = tNs;
         const due = c.steppedTNs + c.quantumNs;
         if (!c.inflight && tNs >= due) this.sendStep(c);

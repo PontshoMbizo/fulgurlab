@@ -45,6 +45,7 @@ const STATUS_RING_COLOR: Record<ExtChipStatus, string> = {
     connecting: "#facc15",
     compiling: "#facc15",
     running: "#34d399",
+    resetting: "#fbbf24",
     ended: "#60a5fa",
     error: "#f87171",
 };

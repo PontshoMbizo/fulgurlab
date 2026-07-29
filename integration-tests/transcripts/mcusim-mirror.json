@@ -1,0 +1,12 @@
+{
+  "backend": "mcusim",
+  "note": "SPEC-DERIVED, NOT RECORDED. The mcusim toolchain (arm-none-eabi-gcc + qemu-system-arm) was not available when the transcripts were made, so these frames follow docs/bridge-protocol.md and mirror the real fpgasim recording's structure. Refresh with `node integration-tests/record-transcript.mjs mcusim` on a machine that has the toolchain.",
+  "session": "s-fake",
+  "frames": [
+    { "on": "hello", "send": { "type": "welcome", "proto": 1, "backend": "mcusim", "version": "1.0.0" } },
+    { "on": "create", "send": { "type": "created", "session": "{{session}}", "pins": [{ "name": "PA0", "dir": "in" }, { "name": "PC13", "dir": "out" }], "quantum_ns": 1000000 } },
+    { "on": "step", "send": { "type": "stepped", "session": "{{session}}", "t_ns": 1000000, "outputs": { "PC13": 1 }, "events": [[412000, "PC13", 1]] } },
+    { "on": "step", "send": { "type": "stepped", "session": "{{session}}", "t_ns": 2000000, "outputs": { "PC13": 0 }, "events": [[1408000, "PC13", 0]] } },
+    { "on": "dispose", "send": { "type": "disposed", "session": "{{session}}" } }
+  ]
+}

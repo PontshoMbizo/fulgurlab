@@ -1,0 +1,12 @@
+{
+  "backend": "fpgasim",
+  "note": "SPEC-DERIVED, NOT RECORDED. No reference backend implements reset yet (fpgasim answers `error stage:\"proto\"` -- see fpgasim-divider.json for the real frames). This transcript exists to exercise the client's reset_done path against the shape docs/bridge-protocol.md specifies, so the code is ready if a backend ever grows the feature. Replace it with a real recording via `node integration-tests/record-transcript.mjs fpgasim` once one does.",
+  "session": "s-fake",
+  "frames": [
+    { "on": "hello", "send": { "type": "welcome", "proto": 1, "backend": "fpgasim", "version": "1.0.0" } },
+    { "on": "create", "send": { "type": "created", "session": "{{session}}", "pins": [{ "name": "en", "dir": "in" }, { "name": "q", "dir": "out" }], "quantum_ns": 500000 } },
+    { "on": "step", "send": { "type": "stepped", "session": "{{session}}", "t_ns": 500000, "outputs": { "q": 1 }, "events": [[481475, "q", 1]] } },
+    { "on": "reset", "send": { "type": "reset_done", "session": "{{session}}" } },
+    { "on": "dispose", "send": { "type": "disposed", "session": "{{session}}" } }
+  ]
+}

@@ -44,7 +44,7 @@ Client → server:
 | `hello` | `proto:1, client` | version handshake, first frame |
 | `create` | `source, config{quantum_ns?, top?, engine?, pins?}` | compile & start a session |
 | `step` | `session, t_ns, inputs:{PIN:0\|1}` | advance one quantum |
-| `reset` | `session` | restart the same build from t = 0 |
+| `reset` | `session` | **reserved, not in v1** — restart the same build from t = 0 |
 | `dispose` | `session` | kill the session/container |
 
 Server → client:
@@ -54,13 +54,35 @@ Server → client:
 | `welcome` | `proto:1, backend:"fpgasim"\|"mcusim", version` | handshake reply |
 | `created` | `session, pins:[{name, dir:"in"\|"out"}], quantum_ns` | session ready |
 | `stepped` | `session, t_ns, outputs:{PIN:0\|1}, events:[[t_ns,PIN,v],…]` | quantum done |
-| `reset_done` | `session` | after `reset` |
+| `reset_done` | `session` | **reserved, not in v1** — after `reset` |
 | `ended` | `session, reason` | sim finished (`$finish` / SYS_EXIT) — outputs freeze |
 | `disposed` | `session` | after `dispose` |
 | `error` | `session?, stage:"proto"\|"compile"\|"runtime"\|"timeout", log` | failure; session dead unless `stage:"proto"` |
 
 `events` carry intra-quantum **output** edges (backend-side timestamps) for waveform
 display only; the circuit solver applies boundary values only.
+
+### Reserved: `reset` / `reset_done`
+
+These two were specified from the start but implemented by nothing (TODO.md P0-3).
+The reference backends reject `reset` outright — verified against the real fpgasim
+bridge, whose reply is recorded verbatim in
+`integration-tests/transcripts/fpgasim-divider.json`:
+
+```json
+{"type":"error","stage":"proto","log":"reset not supported in v1 — dispose and create","session":"…"}
+```
+
+So for v1: **restarting means `dispose` + `create`**, which recompiles.
+
+The fulgurlab client nevertheless implements the full round trip
+(`ExtChipRegistry.reset()` and the `reset_done` handler) so the feature is ready
+the moment a backend grows it, and — because a `stage:"proto"` error leaves the
+session alive, see the row above — a client that optimistically calls `reset()`
+against a v1 backend degrades cleanly: the local quantum clock and output bits
+are rewound, the rejection is surfaced as the chip's status detail, and the
+session keeps running. `integration-tests/transcripts/fpgasim-reset-supported.json`
+covers the happy path against the specified shape.
 
 Pin naming: fpgasim uses the top module's port names; mcusim uses the trace signal names
 (`PC13`, …). `config.pins` lets the client restrict/order the exposed pins; otherwise the
@@ -103,12 +125,17 @@ approximate (icount) — good for GPIO-rate signals, not bit-banged fast buses.
 
 ## circuitjs side
 
-`ExtChipElm` (extends `ChipElm`, dump type 420 / xml `extchip`): pins from the session's
-`created.pins`; per `doStep()` it reads input node voltages and asks the global
-`window.FulgurBridge` (war/fulgur-bridge.js) for the current output levels — a
-synchronous, non-blocking JS call. FulgurBridge owns the async ws exchange, quantum
-pacing, and pausing/resuming the sim on backpressure or reconnect. Electrical model:
-3.3 V push-pull outputs (configurable), Vth = 1.65 V input threshold.
+`ExtChipElm` (dump type 460, `web/engine/src/elements/ext_chip.ts`): pins from the
+session's `created.pins`; per engine step the app glue reads input node voltages and
+asks `ExtChipRegistry` (`web/app/src/extchip/client.ts`) for the current output
+levels — a synchronous, non-blocking call. The registry owns the async ws exchange,
+quantum pacing, and pausing/resuming the sim on backpressure or reconnect.
+Electrical model: 3.3 V push-pull outputs (configurable), Vth = 1.65 V input
+threshold.
+
+There is exactly ONE client implementation. The GWT-era `war/fulgur-bridge.js`
+was a second, independently maintained copy of this same protocol; it went away
+with the Java host, which removes the drift risk TODO.md flagged.
 
 ## Versioning
 

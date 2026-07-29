@@ -543,7 +543,3 @@ export class ExtVoltageElm extends RailElm {
     setVoltage(v: number): void { if (Number.isFinite(v)) this.voltage = v; }
     getVoltage(_t: number): number { return this.voltage; }
 }
-
-// Re-exported so callers importing from this module have the node types they
-// need for the wattmeter's voltage sources without a second import.
-export type { VoltageSource, CircuitNode };

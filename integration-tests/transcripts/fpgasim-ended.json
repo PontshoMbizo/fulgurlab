@@ -1,0 +1,11 @@
+{
+  "backend": "fpgasim",
+  "note": "SPEC-DERIVED, NOT RECORDED. Shape of a session that hits $finish, per docs/bridge-protocol.md's `ended` row; the handshake/created frames are copied from the real fpgasim-divider.json recording.",
+  "session": "s-fake",
+  "frames": [
+    { "on": "hello", "send": { "type": "welcome", "proto": 1, "backend": "fpgasim", "version": "1.0.0" } },
+    { "on": "create", "send": { "type": "created", "session": "{{session}}", "pins": [{ "name": "en", "dir": "in" }, { "name": "q", "dir": "out" }], "quantum_ns": 500000 } },
+    { "on": "step", "send": { "type": "ended", "session": "{{session}}", "reason": "$finish at 481475 ns" } },
+    { "on": "dispose", "send": { "type": "disposed", "session": "{{session}}" } }
+  ]
+}

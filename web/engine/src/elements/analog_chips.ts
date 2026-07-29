@@ -538,6 +538,3 @@ export class LEDArrayElm extends ChipElm {
         }
     }
 }
-
-// Re-export for callers that need the pin type alongside these classes.
-export type { VoltageSource };
