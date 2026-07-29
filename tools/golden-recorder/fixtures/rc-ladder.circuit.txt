@@ -1,0 +1,20 @@
+#probe node:n1 node:n2 node:n3
+#warmup 5
+#steps 200
+#rtol 1e-5
+#atol 1e-7
+#note Three-stage RC ladder, all three interior nodes probed. Pure multi-node coverage: earlier fixtures compared a single probe, so a divergence confined to a deeper node was invisible.
+$ 1 0.000005 10.20027730826997 50 5 50
+R 100 100 60 100 0 0 40 5 0 0 0.5
+r 100 100 200 100 0 1000
+207 200 100 260 60 0 n1
+c 200 100 200 200 0 1.0E-7 0
+g 200 200 200 240 0 0
+r 200 100 300 100 0 1000
+207 300 100 360 60 0 n2
+c 300 100 300 200 0 1.0E-7 0
+g 300 200 300 240 0 0
+r 300 100 400 100 0 1000
+207 400 100 460 60 0 n3
+c 400 100 400 200 0 1.0E-7 0
+g 400 200 400 240 0 0

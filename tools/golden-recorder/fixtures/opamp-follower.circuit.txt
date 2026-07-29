@@ -1,0 +1,17 @@
+#probe elm:2:2 elm:2:0 elm:2:1
+#warmup 5
+#steps 200
+#rtol 1e-5
+#atol 1e-7
+#note Op-amp unity-gain buffer driven by a 40Hz sine. Probes all three op-amp posts (in-, in+, out) so the virtual short is compared, not just the output. Post coordinates: in-=(200,134) in+=(200,166) out=(280,150).
+$ 1 0.000005 10.20027730826997 50 5 50
+v 100 300 100 166 0 1 40 3 0 0 0.5
+g 100 300 100 340 0 0
+a 200 150 280 150 0 15 -15 1000000
+w 100 166 200 166 0
+w 280 150 340 150 0
+r 340 150 340 250 0 1000
+g 340 250 340 290 0 0
+w 340 150 340 100 0
+w 340 100 200 100 0
+w 200 100 200 134 0

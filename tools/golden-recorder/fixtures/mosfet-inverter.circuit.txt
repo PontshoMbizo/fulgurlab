@@ -1,0 +1,15 @@
+#probe elm:2:2 elm:2:0 elm:2:1
+#warmup 5
+#steps 200
+#rtol 1e-4
+#atol 1e-6
+#allow-zero elm:2:1
+#note NMOS inverter with a resistive pull-up, gate driven by a 2kHz square wave. Probes gate/source/drain so the MOSFET's own cutoff/linear/saturation transitions are compared. Post coordinates: gate=(240,200) source=(300,216) drain=(300,184).
+$ 1 0.000005 10.20027730826997 50 5 50
+R 300 100 300 60 0 0 40 5 0 0 0.5
+r 300 100 300 184 0 1000
+f 240 200 300 200 0 1.5 0.02
+g 300 216 300 300 0 0
+v 180 260 180 200 0 2 2000 2.5 2.5 0 0.5
+g 180 260 180 300 0 0
+w 180 200 240 200 0
