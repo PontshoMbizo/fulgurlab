@@ -32,7 +32,9 @@ describe('dump type ids (must match CircuitElm.java getDumpType() exactly)', () 
         expect(new Switch2Elm(0, 0, 0, 0, 0).getDumpType()).toBe('S');
         expect(new InverterElm(0, 0, 0, 0, 0).getDumpType()).toBe('I');
         expect(new RailElm(0, 0, 0, 0, 0).getDumpType()).toBe('R');
-        expect(new ClockElm(0, 0, 0, 0, 0).getDumpType()).toBe('164');
+        // ClockElm is a RailElm preset (getDumpClass() == RailElm.class in
+        // Java), so it dumps as 'R'; 164 is CounterElm.
+        expect(new ClockElm(0, 0, 0, 0, 0).getDumpType()).toBe('R');
         expect(new AndGateElm(0, 0, 0, 0, 0).getDumpType()).toBe('150');
         expect(new PotElm(0, 0, 0, 0, 0).getDumpType()).toBe('174');
         expect(new LEDElm(0, 0, 0, 0, 0).getDumpType()).toBe('162');

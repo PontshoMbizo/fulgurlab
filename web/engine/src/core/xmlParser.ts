@@ -126,36 +126,23 @@ function reconstruct(tag: string, attrs: Record<string, string>, flags: number):
                 ],
             };
         case 'R': {
-            // RailElm.java shares VoltageElm's dumpXml verbatim (no override) --
-            // BUT ClockElm.java ALSO dumps as tag "R" (getDumpClass() ==
-            // RailElm.class, and getXmlDumpType()/getDumpType() are both
-            // inherited unchanged from RailElm: 'R'). The only on-the-wire
-            // signal that a given "R" was really a clock is RailElm.
-            // FLAG_CLOCK (bit 0) in `f`. This port models Clock as its OWN
-            // dump type ('164', see voltage.ts's ClockElm) rather than a
-            // RailElm+flag combo, so reconstruct into whichever one the flag
-            // indicates, matching that class's own dumpTokens() shape.
+            // RailElm.java shares VoltageElm's dumpXml verbatim (no override),
+            // and ClockElm.java dumps as tag "R" too (getDumpClass() ==
+            // RailElm.class, getXmlDumpType()/getDumpType() both inherited).
+            // The only on-the-wire signal that a given "R" was really a clock
+            // is RailElm.FLAG_CLOCK (bit 0) in `f`, which the RailElm
+            // constructor already carries through — so a clock reloads as a
+            // flagged RailElm, exactly as in Java. The defaults differ though:
+            // a clock's are 100 Hz / 2.5 V / 2.5 V bias / WF_SQUARE.
             const FLAG_CLOCK = 1;
-            if ((flags & FLAG_CLOCK) !== 0) {
-                // ClockElm.dumpTokens(): [frequency, maxVoltage, bias, phaseShift, dutyCycle] (no waveform token).
-                return {
-                    dumpType: '164',
-                    tokens: [
-                        numAttr(attrs, 'fr', 100),
-                        numAttr(attrs, 'maxv', 2.5),
-                        numAttr(attrs, 'bias', 2.5),
-                        numAttr(attrs, 'phaseShift', 0),
-                        numAttr(attrs, 'dutyCycle', 0.5),
-                    ],
-                };
-            }
+            const isClock = (flags & FLAG_CLOCK) !== 0;
             return {
                 dumpType: 'R',
                 tokens: [
-                    numAttr(attrs, 'wf', 0),
-                    numAttr(attrs, 'fr', 40),
-                    numAttr(attrs, 'maxv', 5),
-                    numAttr(attrs, 'bias', 0),
+                    numAttr(attrs, 'wf', isClock ? 2 /* WF_SQUARE */ : 0),
+                    numAttr(attrs, 'fr', isClock ? 100 : 40),
+                    numAttr(attrs, 'maxv', isClock ? 2.5 : 5),
+                    numAttr(attrs, 'bias', isClock ? 2.5 : 0),
                     numAttr(attrs, 'phaseShift', 0),
                     numAttr(attrs, 'dutyCycle', 0.5),
                 ],

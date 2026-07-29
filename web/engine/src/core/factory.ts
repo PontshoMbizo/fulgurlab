@@ -23,7 +23,6 @@ const dumpTypeMap: Record<string, ElementCtor> = {
     'f': elements.MosfetElm,
     'i': elements.CurrentElm,
     'R': elements.RailElm,
-    '164': elements.ClockElm,
     'I': elements.InverterElm,
     'L': elements.LogicInputElm,
     'M': elements.LogicOutputElm,
@@ -79,6 +78,31 @@ const dumpTypeMap: Record<string, ElementCtor> = {
     // fulgurlab lockstep bridge chip (docs/bridge-protocol.md) -- engine
     // half only, see elements/ext_chip.ts's class comment.
     '460': elements.ExtChipElm,
+
+    // ---- ChipElm family (elements/chip.ts + sequential/combinational/memory)
+    // 164 is CounterElm, NOT ClockElm. ClockElm has no dump id of its own --
+    // its getDumpClass() is RailElm, so it dumps as 'R' and is a palette
+    // preset only (see palette.ts, same as ACRail/SquareRail).
+    '164': elements.CounterElm,
+    '421': elements.Counter2Elm,
+    '163': elements.RingCounterElm,
+    '155': elements.DFlipFlopElm,
+    '156': elements.JKFlipFlopElm,
+    '193': elements.TFlipFlopElm,
+    '168': elements.LatchElm,
+    '184': elements.MultiplexerElm,
+    '185': elements.DeMultiplexerElm,
+    '195': elements.HalfAdderElm,
+    '196': elements.FullAdderElm,
+    '197': elements.SevenSegDecoderElm,
+    '188': elements.SeqGenElm,
+    '186': elements.PisoShiftElm,
+    '189': elements.SipoShiftElm,
+    '433': elements.BusSplitterElm,
+    '413': elements.SRAMElm,
+    '436': elements.ROMElm,
+    '432': elements.AnalogMuxElm,
+    '419': elements.DecimalDisplayElm,
 };
 
 export function createElement(

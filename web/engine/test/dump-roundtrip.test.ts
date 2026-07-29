@@ -94,16 +94,23 @@ describe('dump()/parse() round-trip -- one case per Tier-1 element', () => {
         expect(rail2.maxVoltage).toBeCloseTo(9);
     });
 
-    it('ClockElm (no waveform token, fixed WF_SQUARE)', () => {
-        const clk = new ClockElm(0, 0, 0, 0, 0, ['123', '3.3', '1.5', '0.2', '0.6']);
-        const clk2 = roundTrip(clk) as ClockElm;
-        expect(clk2.getDumpType()).toBe('164');
+    // ClockElm is a palette preset, not a dump type: Java's
+    // ClockElm.getDumpClass() is RailElm.class, so it serializes as 'R' with
+    // RailElm.FLAG_CLOCK set and reloads as a flagged RailElm. Dump id 164 is
+    // CounterElm (see the counter round-trip case below).
+    it('ClockElm dumps as a flagged RailElm, not as its own dump type', () => {
+        const clk = new ClockElm(0, 0, 0, 0, 0);
+        expect(clk.getDumpType()).toBe('R');
+        expect(clk.flags & RailElm.FLAG_CLOCK).toBeTruthy();
+        expect(clk.waveform).toBe(VoltageElm.WF_SQUARE);
+
+        const clk2 = roundTrip(clk) as RailElm;
+        expect(clk2.getDumpType()).toBe('R');
+        expect(clk2.flags & RailElm.FLAG_CLOCK).toBeTruthy();
         expect(clk2.waveform).toBe(VoltageElm.WF_SQUARE);
-        expect(clk2.frequency).toBeCloseTo(123);
-        expect(clk2.maxVoltage).toBeCloseTo(3.3);
-        expect(clk2.bias).toBeCloseTo(1.5);
-        expect(clk2.phaseShift).toBeCloseTo(0.2);
-        expect(clk2.dutyCycle).toBeCloseTo(0.6);
+        expect(clk2.frequency).toBeCloseTo(100);
+        expect(clk2.maxVoltage).toBeCloseTo(2.5);
+        expect(clk2.bias).toBeCloseTo(2.5);
     });
 
     it('SwitchElm (position + momentary string-comparison quirk)', () => {

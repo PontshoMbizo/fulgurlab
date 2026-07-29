@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { CircuitEngine } from '../src/core/engine';
+import { CircuitElm } from '../src/elements/base';
 import { GroundElm } from '../src/elements/ground';
 import { RailElm } from '../src/elements/voltage';
 import { ResistorElm } from '../src/elements/resistor';
@@ -58,7 +59,11 @@ describe('ScopeElm (dump type 403)', () => {
             const r1 = new ResistorElm(0, 0, 50, 0, 0, 1000);
             const r2 = new ResistorElm(50, 0, 100, 0, 0, 1000);
             const gnd = new GroundElm(100, 0, 100, 0, 0);
-            const elmList = [rail, r1, r2, gnd];
+            // Annotated as CircuitElm[] rather than left to inference: without
+            // it TS widens to (RailElm|ResistorElm|GroundElm)[] and the
+            // conditional push(scope) below fails `tsc --noEmit` (vitest
+            // transpiles without typechecking, so this only showed up there).
+            const elmList: CircuitElm[] = [rail, r1, r2, gnd];
             let scope: ScopeElm | undefined;
             if (withScope) {
                 // Terminal 1 at the mid node (50,0); terminal 2 dangling

@@ -243,26 +243,32 @@ export class RailElm extends VoltageElm {
 }
 
 // Ported from ClockElm.java: a RailElm preset to a 0/2.5V+2.5V-bias square wave.
+//
+// It is a PALETTE PRESET, not a dump type of its own. Java's ClockElm declares
+// `getDumpClass() { return RailElm.class; }` and overrides neither
+// getDumpType() nor getXmlDumpType(), so a clock serializes as a plain
+// RailElm ('R') carrying RailElm.FLAG_CLOCK in its flags word, and reloads as
+// a RailElm — exactly like ACRailElm/SquareRailElm/NoiseElm, which this port
+// already models as presets. An earlier draft here gave ClockElm its own dump
+// id '164' and registered that in the factory; 164 is really CounterElm
+// (CounterElm.java:174), so every counter in a Java-saved file silently loaded
+// as a 1-post clock. See elements/sequential.ts.
 export class ClockElm extends RailElm {
     constructor(x: number, y: number, x2: number, y2: number, flags: number, params?: string[] | number) {
-        super(x, y, x2, y2, flags, VoltageElm.WF_SQUARE);
-        this.maxVoltage = 2.5;
-        this.bias = 2.5;
-        this.frequency = 100;
         if (Array.isArray(params) && params.length > 0) {
-            this.frequency = parseFloat(params[0]) || 100;
-            this.maxVoltage = params.length > 1 ? parseFloat(params[1]) : 2.5;
-            this.bias = params.length > 2 ? parseFloat(params[2]) : 2.5;
-            this.phaseShift = params.length > 3 ? parseFloat(params[3]) : 0;
-            this.dutyCycle = params.length > 4 ? parseFloat(params[4]) : 0.5;
+            super(x, y, x2, y2, flags, params);
+        } else {
+            super(x, y, x2, y2, flags, VoltageElm.WF_SQUARE);
+            this.maxVoltage = 2.5;
+            this.bias = 2.5;
+            this.frequency = 100;
         }
         this.flags |= RailElm.FLAG_CLOCK;
     }
-
-    getDumpType() { return '164'; }
-    // No waveform token -- this constructor hardcodes WF_SQUARE and reads
-    // frequency/maxVoltage/bias/phaseShift/dutyCycle starting at params[0].
-    dumpTokens() { return [this.frequency, this.maxVoltage, this.bias, this.phaseShift, this.dutyCycle]; }
+    // getDumpType()/dumpTokens() deliberately NOT overridden — inherited 'R'
+    // plus VoltageElm's [waveform, frequency, maxVoltage, bias, phaseShift,
+    // dutyCycle], which is what Java writes and what the 'R' factory entry
+    // reads back.
 }
 
 // Ported from VarRailElm.java: a RailElm whose output voltage is directly

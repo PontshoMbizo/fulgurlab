@@ -37,3 +37,7 @@ export * from './scope';
 export * from './custom_logic';
 export * from './seven_seg';
 export * from './ext_chip';
+export * from './chip';
+export * from './sequential';
+export * from './combinational';
+export * from './memory';
