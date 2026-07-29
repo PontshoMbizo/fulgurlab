@@ -112,6 +112,7 @@ export interface Stamper {
     stampConductance(n1: CircuitNode, n2: CircuitNode, g: number): void;
     stampVoltageSource(n1: CircuitNode, n2: CircuitNode, vs: VoltageSource, v?: number): void;
     stampCurrentSource(n1: CircuitNode, n2: CircuitNode, i: number): void;
+    stampVCCurrentSource(cn1: CircuitNode, cn2: CircuitNode, vn1: CircuitNode, vn2: CircuitNode, g: number): void;
     stampMatrix(n1: CircuitNode, n2: CircuitNode, val: number): void;
     stampMatrixVSNode(vs: VoltageSource, n: CircuitNode, val: number): void;
     stampMatrixNodeVS(n: CircuitNode, vs: VoltageSource, val: number): void;

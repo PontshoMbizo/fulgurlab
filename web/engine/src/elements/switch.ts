@@ -27,13 +27,13 @@ export class SwitchElm extends CircuitElm {
         }
     }
 
-    getDumpType() { return 's'; }
+    getDumpType(): number | string { return 's'; }
     // position dumped as a plain 0/1 (the constructor's parseInt fallback
     // path handles that); momentary relies on the constructor's strict
     // `params[1] === "true"` string comparison, so it must be emitted as the
     // literal words "true"/"false" -- which is exactly what Array.join(' ')
     // produces from a boolean, so no special-casing is needed here.
-    dumpTokens() { return [this.position, this.momentary]; }
+    dumpTokens(): (string | number | boolean)[] { return [this.position, this.momentary]; }
     getConnection(n1: number, n2: number) { return this.position === 0; }
     isWireEquivalent() { return this.position === 0; }
     isRemovableWire() { return this.position === 0; }

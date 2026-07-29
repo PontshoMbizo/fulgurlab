@@ -1,6 +1,7 @@
 import { createElement } from './factory';
 import { CircuitEngine } from './engine';
 import { undumpModelFromTokens } from '../elements/custom_logic';
+import { undumpCompositeModel } from '../elements/composite';
 import { parseXmlCircuit } from './xmlParser';
 
 // Falstad-text-format reader, now with the full classic `$` options line
@@ -37,7 +38,8 @@ export class CircuitParser {
             const type = tokens[0];
             // Global settings / scope / hint / etc. lines: not modelled yet,
             // just consumed so they don't get misread as element lines.
-            if (type === '$' || type === 'o' || type === 'h' || type === '!' || type === '%' || type === '?' || type === 'B') {
+            if (type === '$' || type === 'o' || type === 'h' || type === '!' || type === '%' || type === '?' || type === 'B'
+                || type === '.' || type === '38') {
                 this.parseOption(type, tokens, trimmed);
                 continue;
             }
@@ -130,6 +132,30 @@ export class CircuitParser {
                 const idx = parseInt(tokens[1], 10);
                 if (!Number.isNaN(idx)) this.engine.scopeHints.push(idx);
             }
+            this.engine.preservedLines.push(trimmed);
+            return;
+        }
+        if (type === '.') {
+            // CustomCompositeModel "." line: a subcircuit definition. Like "!"
+            // lines these must be registered BEFORE any 410 element that names
+            // them -- CustomCompositeElm's constructor throws when its model is
+            // missing, so the element line would otherwise be preserved
+            // verbatim instead of simulated. The line is ALSO preserved so a
+            // save re-emits the definition even if no 410 references it (the
+            // model registry is module-level and shared across engines).
+            try {
+                undumpCompositeModel(tokens.slice(1));
+            } catch (e) {
+                console.warn(`Failed to parse subcircuit model line "${tokens.join(' ')}": ${e}`);
+            }
+            this.engine.preservedLines.push(trimmed);
+            return;
+        }
+        if (type === '38') {
+            // "38" is not an element -- it's an Adjustable (slider) binding:
+            // `38 <elmIndex> <editItem> <min> <max> <label>`. This engine has
+            // no slider model, so it rides along verbatim rather than being
+            // misread as a 6-token element line.
             this.engine.preservedLines.push(trimmed);
             return;
         }

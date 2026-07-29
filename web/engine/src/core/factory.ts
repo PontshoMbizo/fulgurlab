@@ -103,7 +103,102 @@ const dumpTypeMap: Record<string, ElementCtor> = {
     '436': elements.ROMElm,
     '432': elements.AnalogMuxElm,
     '419': elements.DecimalDisplayElm,
+    // Analog/mixed-signal chips (elements/analog_chips.ts).
+    '165': elements.TimerElm,
+    '194': elements.MonostableElm,
+    '158': elements.VCOElm,
+    '161': elements.PhaseCompElm,
+    '166': elements.DACElm,
+    '167': elements.ADCElm,
+    '179': elements.CC2Elm,
+    '405': elements.LEDArrayElm,
+
+    // ---- Two-terminal passive / state-dependent (elements/passive.ts).
+    // 'm'/'T'/'j' are the ASCII forms of Java's 109/84/106 -- getDumpType()
+    // returns a char literal there, so the id and the character are the same
+    // number and the parser sees the character.
+    'm': elements.MemristorElm,
+    '209': elements.PolarCapacitorElm,
+    '175': elements.TunnelDiodeElm,
+    '176': elements.VaractorElm,
+    '187': elements.SparkGapElm,
+    '404': elements.FuseElm,
+    '181': elements.LampElm,
+    '350': elements.ThermistorNTCElm,
+    '374': elements.LDRElm,
+
+    // ---- Meters / taps / data sources and sinks (elements/meters.ts).
+    '368': elements.TestPointElm,
+    '423': elements.LineElm,
+    '216': elements.OhmMeterElm,
+    '420': elements.WattmeterElm,
+    '408': elements.StopTriggerElm,
+    '210': elements.DataRecorderElm,
+    '211': elements.AudioOutputElm,
+    '411': elements.AudioInputElm,
+    '424': elements.DataInputElm,
+    '418': elements.ExtVoltageElm,
+
+    // ---- Semiconductors (elements/semiconductors.ts).
+    'j': elements.JfetElm,
+    '173': elements.TriodeElm,
+    '177': elements.SCRElm,
+    '203': elements.DiacElm,
+    '206': elements.TriacElm,
+
+    // ---- Magnetically coupled / distributed (elements/transformer.ts).
+    'T': elements.TransformerElm,
+    '169': elements.TappedTransformerElm,
+    '406': elements.CustomTransformerElm,
+    '171': elements.TransLineElm,
+
+    // ---- Relays, multi-pole switches, motors (elements/relays.ts).
+    '178': elements.RelayElm,
+    '425': elements.RelayCoilElm,
+    '426': elements.RelayContactElm,
+    '416': elements.MBBSwitchElm,
+    '429': elements.DPDTSwitchElm,
+    '430': elements.CrossSwitchElm,
+    '428': elements.MotorProtectionSwitchElm,
+    '415': elements.DCMotorElm,
+    '427': elements.ThreePhaseMotorElm,
+
+    // ---- Subcircuits / fixed-model composites (elements/composite.ts).
+    '410': elements.CustomCompositeElm,
+    '400': elements.DarlingtonElm,
+    '407': elements.OptocouplerElm,
+    '409': elements.OpAmpRealElm,
+    '417': elements.UnijunctionElm,
+    '412': elements.CrystalElm,
 };
+
+// CompositeElm's model strings reference sub-elements by Java CLASS NAME
+// ("NTransistorElm 1 2 4"), not by dump id, so composite.ts needs its own
+// name-keyed registry. It is populated here because this module already imports
+// every element; registering from composite.ts itself would be an import cycle.
+elements.registerElementClasses({
+    ...elements,
+    // Java's NTransistorElm/PTransistorElm/NMosfetElm/... are palette presets
+    // whose getDumpClass() points back at the generic class; the flags word in
+    // each model's per-child state blob carries the polarity, so mapping them
+    // onto the generic constructor is faithful.
+    NTransistorElm: elements.TransistorElm,
+    PTransistorElm: elements.TransistorElm,
+    NMosfetElm: elements.MosfetElm,
+    PMosfetElm: elements.MosfetElm,
+    NJfetElm: elements.JfetElm,
+    PJfetElm: elements.JfetElm,
+    NDarlingtonElm: elements.DarlingtonElm,
+    PDarlingtonElm: elements.DarlingtonElm,
+    ACVoltageElm: elements.VoltageElm,
+    DCVoltageElm: elements.VoltageElm,
+    ACRailElm: elements.RailElm,
+    SquareRailElm: elements.RailElm,
+    ClockElm: elements.ClockElm,
+    NoiseElm: elements.RailElm,
+    OpAmpSwapElm: elements.OpAmpElm,
+    PushSwitchElm: elements.SwitchElm,
+});
 
 export function createElement(
     dumpType: string,

@@ -60,7 +60,7 @@ export class VoltageElm extends CircuitElm {
         this.freqTimeZero = 0;
     }
 
-    getDumpType() { return 'v'; }
+    getDumpType(): number | string { return 'v'; }
     // Order matches this class's own constructor's `params` reads exactly:
     // waveform, frequency, maxVoltage, bias, phaseShift, dutyCycle. RailElm
     // inherits this unchanged (same constructor, same fields); ClockElm
@@ -201,7 +201,7 @@ export class RailElm extends VoltageElm {
         super(x, y, x2, y2, flags, params);
     }
 
-    getDumpType() { return 'R'; }
+    getDumpType(): number | string { return 'R'; }
     getPostCount() { return 1; }
     hasGroundConnection(n1: number) { return true; }
     isRail() { return true; }

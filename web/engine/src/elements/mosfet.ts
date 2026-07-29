@@ -44,10 +44,10 @@ export class MosfetElm extends CircuitElm {
     }
 
     nonLinear() { return true; }
-    getDumpType() { return 'f'; }
+    getDumpType(): number | string { return 'f'; }
     // `pnp` is NOT a dump token -- it's derived purely from flags&FLAG_PNP,
     // already preserved via the base 5-token prefix.
-    dumpTokens() { return [this.vt, this.beta]; }
+    dumpTokens(): (string | number | boolean)[] { return [this.vt, this.beta]; }
     getPostCount() { return this.hasBodyTerminal() ? 4 : 3; }
     hasBodyTerminal() { return (this.flags & MosfetElm.FLAG_BODY_TERMINAL) !== 0 && this.doBodyDiode(); }
     doBodyDiode() { return (this.flags & MosfetElm.FLAG_BODY_DIODE) !== 0 && this.showBulk(); }

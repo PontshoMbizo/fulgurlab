@@ -39,10 +39,10 @@ export class CurrentElm extends CircuitElm {
         this.lastVoltDiff = 0;
     }
 
-    getDumpType() { return 'i'; }
+    getDumpType(): number | string { return 'i'; }
     // Both must always be emitted together: the constructor only reads
     // either when `params.length > 1`.
-    dumpTokens() { return [this.currentValue, this.maxVoltage]; }
+    dumpTokens(): (string | number | boolean)[] { return [this.currentValue, this.maxVoltage]; }
 
     stamp(stamper: Stamper) {
         if (this.broken) {

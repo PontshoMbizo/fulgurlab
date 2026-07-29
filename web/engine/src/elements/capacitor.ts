@@ -37,8 +37,8 @@ export class CapacitorElm extends CircuitElm {
         }
     }
 
-    getDumpType() { return 'c'; }
-    dumpTokens() { return [this.capacitance, this.initialVoltage, this.seriesResistance]; }
+    getDumpType(): number | string { return 'c'; }
+    dumpTokens(): (string | number | boolean)[] { return [this.capacitance, this.initialVoltage, this.seriesResistance]; }
     isTrapezoidal() { return (this.flags & CapacitorElm.FLAG_BACK_EULER) === 0; }
     getInternalNodeCount() { return (this.seriesResistance > 0) ? 1 : 0; }
 

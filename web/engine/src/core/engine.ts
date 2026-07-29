@@ -4,7 +4,20 @@ import { Analyzer, CircuitNode, CircuitMatrix, VoltageSource } from './node';
 import { lu_factor_dense, lu_solve_dense } from './lu';
 
 export class CircuitEngine implements Stamper {
+    // The AUTHORED element list -- what the editor manipulates and what
+    // dump() serializes. Composite/subcircuit elements appear here as a single
+    // entry.
     elmList: CircuitElm[] = [];
+    // The EXPANDED element list the solver walks: same entries, but every
+    // CompositeElm replaced by its children (Analyzer.analyze() builds it).
+    // Java keeps exactly this split -- app.elmList is authored,
+    // SimulationManager.elmList/elmArr is expanded (SimulationManager.java:829
+    // `elmList = new Vector<>(app.elmList)` then addChildElms()). Collapsing
+    // the two was a real bug: a subcircuit's children got re-emitted as
+    // top-level dump lines, so saving a circuit with an op-amp macromodel in
+    // it produced a file that loaded as the macromodel PLUS 15 stray
+    // components at (0,0).
+    simElmList: CircuitElm[] = [];
     matrices: CircuitMatrix[] | null = null;
     nodeList: CircuitNode[] = [];
     voltageSources: VoltageSource[] = [];
@@ -54,6 +67,7 @@ export class CircuitEngine implements Stamper {
     // Reset to an empty circuit (used by CircuitParser before loading new text).
     clear() {
         this.elmList = [];
+        this.simElmList = [];
         this.nodeList = [];
         this.voltageSources = [];
         this.matrices = null;
@@ -109,7 +123,7 @@ export class CircuitEngine implements Stamper {
         this.matrices = result.matrices;
         this.voltageSources = result.voltageSources;
         this.circuitNonLinear = result.circuitNonLinear;
-        this.elmList = result.elmList;
+        this.simElmList = result.elmList;
         
         // stampCircuit equivalent
         for (const m of this.matrices) {
@@ -128,7 +142,7 @@ export class CircuitEngine implements Stamper {
 
         this.connectUnconnectedNodes(result.unconnectedNodes);
 
-        for (const ce of this.elmList) {
+        for (const ce of this.simElmList) {
             ce.stamp(this);
         }
 
@@ -162,7 +176,7 @@ export class CircuitEngine implements Stamper {
     }
 
     stepOnce() {
-        if (!this.matrices || this.elmList.length === 0) return;
+        if (!this.matrices || this.simElmList.length === 0) return;
 
         // ADAPTIVE TIMESTEP (audit issue #4, Java parity): when the Newton
         // loop cannot converge at the current timeStep, halve it (down to
@@ -192,7 +206,7 @@ export class CircuitEngine implements Stamper {
     private runNewtonStep(): boolean {
         const matrices = this.matrices;
         if (!matrices) return true; // guarded by stepOnce; keeps TS narrowing happy
-        for (const ce of this.elmList) {
+        for (const ce of this.simElmList) {
             ce.startIteration(this);
         }
 
@@ -215,7 +229,7 @@ export class CircuitEngine implements Stamper {
                 }
             }
 
-            for (const ce of this.elmList) {
+            for (const ce of this.simElmList) {
                 ce.doStep(this);
             }
 
@@ -263,7 +277,7 @@ export class CircuitEngine implements Stamper {
             this.timeStepAccum -= this.maxTimeStep;
         }
 
-        for (const ce of this.elmList) {
+        for (const ce of this.simElmList) {
             ce.stepFinished(this);
         }
 
@@ -308,7 +322,7 @@ export class CircuitEngine implements Stamper {
     }
 
     private calcWireCurrents() {
-        for (const ce of this.elmList) {
+        for (const ce of this.simElmList) {
             ce.calculateCurrent();
         }
     }
@@ -347,6 +361,16 @@ export class CircuitEngine implements Stamper {
     stampCurrentSource(n1: CircuitNode, n2: CircuitNode, i: number) {
         this.stampRightSide(n1, -i);
         this.stampRightSide(n2, i);
+    }
+
+    // Ported from SimulationManager.stampVCCurrentSource() (:1175). Was
+    // previously inlined inside dependent_sources.ts's VCCSElm; promoted to a
+    // real Stamper primitive now that the transformer family needs it too.
+    stampVCCurrentSource(cn1: CircuitNode, cn2: CircuitNode, vn1: CircuitNode, vn2: CircuitNode, g: number) {
+        this.stampMatrix(cn1, vn1, g);
+        this.stampMatrix(cn2, vn2, g);
+        this.stampMatrix(cn1, vn2, -g);
+        this.stampMatrix(cn2, vn1, -g);
     }
 
     stampMatrix(i: CircuitNode, j: CircuitNode, x: number) {

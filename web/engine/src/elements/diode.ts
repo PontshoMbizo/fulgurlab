@@ -170,8 +170,8 @@ export class DiodeElm extends CircuitElm {
     }
 
     nonLinear() { return true; }
-    getInternalNodeCount() { return this.hasResistance ? 1 : 0; }
-    getDumpType() { return 'd'; }
+    getInternalNodeCount(): number { return this.hasResistance ? 1 : 0; }
+    getDumpType(): number | string { return 'd'; }
     // The constructor only ever reads params[0] as modelName when
     // FLAG_MODEL (flags&2) is set -- emitting it unconditionally would be
     // harmless (just ignored on reparse) but emitting it *conditionally* on
