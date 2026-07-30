@@ -1,5 +1,5 @@
 import { CircuitElm, Point, Stamper, escapeDumpText, unescapeDumpText } from './base';
-import { CircuitNode, VoltageSource } from '../core/node';
+import { CircuitNode } from '../core/node';
 
 // Ported from ExtChipElm.java (dump type 460, xml "extchip") -- the fulgurlab
 // lockstep bridge chip (docs/bridge-protocol.md). This is the ENGINE half
@@ -14,10 +14,12 @@ import { CircuitNode, VoltageSource } from '../core/node';
 // drives all outputs" shape -- see custom_logic.ts's own class comment for
 // the precedent of a standalone CircuitElm reimplementing ChipElm pin
 // geometry rather than extending an abstract ChipElm base that doesn't exist
-// in this port): every OUTPUT pin is its own ground-referenced push-pull
-// voltage source (0V / HIGH_VOLTAGE), driven each doStep() from whichever
-// bit of `outputBits` the app last wrote; every INPUT pin is high-Z,
-// sampled at > THRESHOLD each doStep() into `inputBits`. No callbacks, no
+// in this port): every OUTPUT pin is a ground-referenced push-pull driver
+// (0V / HIGH_VOLTAGE behind OUTPUT_RESISTANCE, stamped as a Norton pair so
+// it needs no voltage-source row), driven each doStep() from whichever bit
+// of `outputBits` the app last wrote; every INPUT pin is high-Z unless the
+// pin spec gives it a pull resistor, and is sampled at > THRESHOLD each
+// doStep() into `inputBits`. No callbacks, no
 // dependency injection -- the app's engineStore glues these two plain
 // public fields to the ws client after every completed step (see this
 // file's own test suite + the task report for the exact call order:
@@ -25,6 +27,18 @@ import { CircuitNode, VoltageSource } from '../core/node';
 export interface ExtChipPin {
     name: string;
     dir: 'in' | 'out';
+    /**
+     * Optional passive pull on an INPUT pin, in ohms, toward HIGH_VOLTAGE
+     * ('pu') or ground ('pd'). null = the true high-Z of a bare input.
+     *
+     * Without this a button is unusable. Wire an input to a switch to ground
+     * -- the obvious way to build one -- and with the switch OPEN the node is
+     * driven by nothing at all; the Analyzer's unconnected-node handling ties
+     * it to ground through 1e8 ohm, so the pin reads LOW whether the button is
+     * pressed or not. Real boards solve this with a pull resistor (the Tang
+     * Nano's own buttons have 10K pull-ups); so does this.
+     */
+    pull: { dir: 'up' | 'down'; r: number } | null;
 }
 
 // "name:in,name:out,..." -> ordered pins, inputs first (bridge bit order),
@@ -56,17 +70,61 @@ function unescapeToken(s: string): string {
     return unescapeDumpText(s);
 }
 
-function parseExtChipPinSpec(spec: string): ExtChipPin[] {
+// Resistance shorthand: "10k" / "4k7" / "330" / "1M". The 4k7 form (value
+// letter used as the decimal point) is standard on schematics and is what
+// someone typing a pull-up value will reach for.
+function parseResistance(text: string): number | null {
+    const m = /^(\d+)(?:([kKmMrR])(\d*))?$/.exec(text);
+    if (!m) return null;
+    const mult = m[2] ? ({ k: 1e3, m: 1e6, r: 1 })[m[2].toLowerCase() as 'k' | 'm' | 'r'] : 1;
+    const whole = Number(m[1]);
+    const frac = m[3] ? Number(`0.${m[3]}`) : 0;
+    const r = (whole + frac) * mult;
+    return r > 0 ? r : null;
+}
+
+/**
+ * Pin spec grammar: `name:dir` with optional colon-separated options.
+ *
+ *     btn1:in            plain high-Z input (unchanged, and still the default)
+ *     btn1:in:pu10k      10k pull-up to 3.3V
+ *     sw:in:pd4k7        4k7 pull-down to ground
+ *
+ * Options use ':' rather than '=' because escapeDumpText() rewrites '=' to
+ * '\q' -- correct but unreadable in a saved file -- while ':' passes through
+ * untouched. The name grammar is [^:\s]+, so there is no ambiguity.
+ *
+ * Backward compatible in both directions: an option-free spec parses exactly
+ * as before, and an unknown option is a parse failure rather than a silent
+ * misread (the whole spec returns [], the element's existing "bad spec means
+ * an inert zero-post block" contract).
+ */
+export function parseExtChipPinSpec(spec: string): ExtChipPin[] {
     const pins: ExtChipPin[] = [];
     const seen = new Set<string>();
     for (const raw of String(spec ?? '').split(',')) {
         const s = raw.trim();
         if (!s) continue;
-        const m = /^([^:\s]+)\s*:\s*(in|out)$/.exec(s);
-        if (!m) return [];
-        if (seen.has(m[1])) return [];
-        seen.add(m[1]);
-        pins.push({ name: m[1], dir: m[2] as 'in' | 'out' });
+        const parts = s.split(':').map((t) => t.trim());
+        if (parts.length < 2) return [];
+        const [name, dir, ...opts] = parts;
+        if (!name || /\s/.test(name)) return [];
+        if (dir !== 'in' && dir !== 'out') return [];
+        if (seen.has(name)) return [];
+        seen.add(name);
+
+        let pull: ExtChipPin['pull'] = null;
+        for (const opt of opts) {
+            const om = /^(pu|pd)(.+)$/.exec(opt);
+            if (!om) return [];
+            // A pull on an output would fight its own driver; reject rather
+            // than silently ignore, so a typo surfaces.
+            if (dir !== 'in') return [];
+            const r = parseResistance(om[2]);
+            if (r === null) return [];
+            pull = { dir: om[1] === 'pu' ? 'up' : 'down', r };
+        }
+        pins.push({ name, dir, pull });
     }
     return pins;
 }
@@ -79,6 +137,18 @@ export class ExtChipElm extends CircuitElm {
     // ExtChipElm.java's setHighVoltage(3.3) constructor call exactly.
     static HIGH_VOLTAGE = 3.3;
     static THRESHOLD = 1.65;
+    /**
+     * Output driver impedance, ohms. Real 3.3V CMOS GPIO is roughly 25-50 ohm;
+     * an FPGA pad with the Tang Nano's default 8 mA drive is in that band.
+     *
+     * Non-zero matters more than its exact value. As an IDEAL source a pin
+     * would deliver unbounded current, so the single most common beginner
+     * circuit -- an LED straight from a pin to ground -- produced a physically
+     * meaningless answer instead of the "that would burn out the LED" one.
+     * Into any sane load the difference is under a percent (3.3V through 33
+     * ohm into 1k reads 3.19V), so this costs nothing where it does not matter.
+     */
+    static OUTPUT_RESISTANCE = 33;
 
     // Chip geometry constants. UNLIKE CustomLogicElm's two-column (west
     // in / east out) layout, this element's pins run in two HORIZONTAL rows
@@ -155,7 +225,6 @@ export class ExtChipElm extends CircuitElm {
 
     private inPins: ExtChipPin[] = [];
     private outPins: ExtChipPin[] = [];
-    private outputVoltSources: VoltageSource[] = [];
     private inPosts: Point[] = [];
     private outPosts: Point[] = [];
     // Decorative board footprint (world-space size, not position) -- computed
@@ -217,7 +286,6 @@ export class ExtChipElm extends CircuitElm {
         const all = parseExtChipPinSpec(this.pinSpec);
         this.inPins = all.filter((pin) => pin.dir === 'in');
         this.outPins = all.filter((pin) => pin.dir === 'out');
-        this.outputVoltSources = new Array(this.outPins.length);
         // A pin-count change invalidates any bits the app/element were
         // holding for the OLD pin layout -- start clean rather than risk
         // stale bits landing on a differently-shaped pin set. The app is
@@ -250,7 +318,10 @@ export class ExtChipElm extends CircuitElm {
     }
 
     getPostCount() { return this.inPins.length + this.outPins.length; }
-    getVoltageSourceCount() { return this.outPins.length; }
+    // Zero: outputs are Norton pairs (conductance + current source) rather
+    // than ideal voltage sources, so they consume no matrix voltage-source
+    // rows. See OUTPUT_RESISTANCE and stamp()/doStep().
+    getVoltageSourceCount() { return 0; }
     nonLinear() { return false; }
 
     // No real DC path between any two pins of this element (same reasoning
@@ -259,7 +330,14 @@ export class ExtChipElm extends CircuitElm {
     // (hasGroundConnection() below), inputs get closure only from whatever
     // actually drives them.
     getConnection(_n1: number, _n2: number): boolean { return false; }
-    hasGroundConnection(n1: number): boolean { return n1 >= this.inPins.length; }
+    // Outputs are ground-referenced sources; a PULLED input now genuinely has
+    // a DC path to ground too (through its pull resistor, in either
+    // direction), and the Analyzer has to know or it will treat an otherwise
+    // unconnected pulled pin as floating and shunt it to ground itself.
+    hasGroundConnection(n1: number): boolean {
+        if (n1 >= this.inPins.length) return true;
+        return this.inPins[n1]?.pull != null;
+    }
 
     setPoints(): void {
         super.setPoints();
@@ -289,14 +367,30 @@ export class ExtChipElm extends CircuitElm {
         return this.outPosts[o] ?? null;
     }
 
-    setVoltageSource(j: number, vs: VoltageSource): void {
-        this.outputVoltSources[j] = vs;
-        vs.setNodes(CircuitNode.ground, this.nodes[this.inPins.length + j]);
-    }
-
     stamp(stamper: Stamper): void {
+        // Output drivers: the resistive half of a Thevenin source
+        // (HIGH_VOLTAGE or 0 behind OUTPUT_RESISTANCE), transformed to Norton.
+        // The current half is driven per-step in doStep() from outputBits.
         for (let j = 0; j < this.outPins.length; j++) {
-            stamper.stampVoltageSource(CircuitNode.ground, this.nodes[this.inPins.length + j], this.outputVoltSources[j]);
+            stamper.stampResistor(CircuitNode.ground, this.nodes[this.inPins.length + j], ExtChipElm.OUTPUT_RESISTANCE);
+        }
+        // Input pull resistors, as a Norton pair: the resistor to ground plus,
+        // for a pull-UP, a current source of V/R into the node. That is the
+        // Thevenin source (HIGH_VOLTAGE behind R) transformed, so it needs no
+        // internal node and no extra voltage source -- getVoltageSourceCount()
+        // and the node count are both untouched.
+        //
+        // Both halves belong HERE and not in doStep(): analyzeAndStamp() snapshots
+        // rightSide into origRightSide AFTER every element has stamped, and the
+        // Newton loop restores from that snapshot before each iteration, so a
+        // stamp-time current source persists correctly across all sub-iterations.
+        for (let i = 0; i < this.inPins.length; i++) {
+            const pull = this.inPins[i].pull;
+            if (!pull) continue;
+            stamper.stampResistor(CircuitNode.ground, this.nodes[i], pull.r);
+            if (pull.dir === 'up') {
+                stamper.stampCurrentSource(CircuitNode.ground, this.nodes[i], ExtChipElm.HIGH_VOLTAGE / pull.r);
+            }
         }
     }
 
@@ -307,10 +401,16 @@ export class ExtChipElm extends CircuitElm {
         }
         this.inputBits = bits >>> 0;
 
+        // Norton current for each output's drive level. In doStep() rather
+        // than stamp() because it changes every quantum: the Newton loop
+        // restores rightSide from origRightSide before each sub-iteration, so
+        // a value stamped here is re-applied every iteration, which is exactly
+        // what a per-step source needs.
         for (let j = 0; j < this.outPins.length; j++) {
             const bit = (this.outputBits >>> j) & 1;
             const v = bit ? ExtChipElm.HIGH_VOLTAGE : 0;
-            stamper.updateVoltageSource(CircuitNode.ground, this.nodes[this.inPins.length + j], this.outputVoltSources[j], v);
+            stamper.stampCurrentSource(CircuitNode.ground, this.nodes[this.inPins.length + j],
+                                       v / ExtChipElm.OUTPUT_RESISTANCE);
         }
     }
 

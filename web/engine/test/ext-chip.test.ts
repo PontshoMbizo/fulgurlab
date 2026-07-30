@@ -73,7 +73,7 @@ describe('ExtChipElm registration + dump round-trip', () => {
         const elm = new ExtChipElm(0, 0, 100, 0, 0, ['ws://x', 'a:in,b:out', '5000']);
         expect(elm.engineName).toBe('');
         expect(elm.source).toBe('');
-        expect(elm.pins).toEqual([{ name: 'a', dir: 'in' }, { name: 'b', dir: 'out' }]);
+        expect(elm.pins).toEqual([{ name: 'a', dir: 'in', pull: null }, { name: 'b', dir: 'out', pull: null }]);
     });
 
     it('full dump() line reloads through the factory unchanged', () => {
@@ -104,9 +104,9 @@ describe('ExtChipElm pin geometry', () => {
         elm.preStamp();
         expect(elm.getPostCount()).toBe(3);
         expect(elm.pins).toEqual([
-            { name: 'a', dir: 'in' },
-            { name: 'b', dir: 'in' },
-            { name: 'c', dir: 'out' },
+            { name: 'a', dir: 'in', pull: null },
+            { name: 'b', dir: 'in', pull: null },
+            { name: 'c', dir: 'out', pull: null },
         ]);
 
         const pA = elm.getPost(0)!, pB = elm.getPost(1)!, pC = elm.getPost(2)!;
@@ -160,6 +160,33 @@ describe('ExtChipElm pin geometry', () => {
         }
     });
 
+    it('parses pull options, and rejects malformed ones outright', () => {
+        const ok = new ExtChipElm(0, 0, 100, 0, 0,
+            ['ws://x', 'a:in:pu10k,b:in:pd4k7,c:in,d:out', '1000000', '', '']);
+        expect(ok.pins).toEqual([
+            { name: 'a', dir: 'in', pull: { dir: 'up', r: 10_000 } },
+            { name: 'b', dir: 'in', pull: { dir: 'down', r: 4_700 } },
+            { name: 'c', dir: 'in', pull: null },
+            { name: 'd', dir: 'out', pull: null },
+        ]);
+
+        // A typo must fail loudly (zero posts, the existing "inert block"
+        // contract) rather than being silently dropped -- a pull that quietly
+        // vanishes turns into a button that mysteriously never works.
+        for (const bad of ['a:in:xx10k', 'a:in:pu', 'a:in:pu0', 'a:in:puabc', 'a:out:pu10k']) {
+            const elm = new ExtChipElm(0, 0, 100, 0, 0, ['ws://x', bad, '1000000', '', '']);
+            expect(elm.getPostCount(), `${bad} should not parse`).toBe(0);
+        }
+    });
+
+    it('a pin spec with pull options survives a dump round trip', () => {
+        const elm = new ExtChipElm(0, 0, 100, 0, 0,
+            ['ws://x', 'btn:in:pu10k,led:out', '1000000', '', '']);
+        const reloaded = new ExtChipElm(0, 0, 100, 0, 0, elm.dumpTokens().map(String));
+        expect(reloaded.pinSpec).toBe('btn:in:pu10k,led:out');
+        expect(reloaded.pins[0].pull).toEqual({ dir: 'up', r: 10_000 });
+    });
+
     it('setPinSpec() re-derives pins and stays preStamp-safe', () => {
         const elm = new ExtChipElm(0, 0, 100, 0, 0, ['ws://x', 'a:in', '1000000', '', '']);
         elm.preStamp();
@@ -187,7 +214,11 @@ describe('ExtChipElm electrical behavior', () => {
 
         elm.outputBits = 1;
         for (let i = 0; i < 5; i++) engine.stepOnce();
-        expect(elm.volts[0]).toBeCloseTo(3.3, 1);
+        // Not 3.3V exactly: the pin drives through OUTPUT_RESISTANCE, so this
+        // is a divider. Real GPIO behaves the same way, and it is what stops
+        // an LED wired straight to a pin from drawing unbounded current.
+        const expected = 3.3 * 1000 / (1000 + ExtChipElm.OUTPUT_RESISTANCE);
+        expect(elm.volts[0]).toBeCloseTo(expected, 2);
 
         elm.outputBits = 0;
         for (let i = 0; i < 5; i++) engine.stepOnce();
@@ -250,6 +281,84 @@ describe('ExtChipElm electrical behavior', () => {
         engine.analyzeAndStamp();
         for (let i = 0; i < 5; i++) engine.stepOnce();
         expect(elm.inputBits & 1).toBe(0);
+    });
+
+    // Without a pull, this circuit CANNOT WORK, and that is the bug: with the
+    // switch open the input node is driven by nothing, so the Analyzer's
+    // unconnected-node handling ties it to ground through 1e8 ohm and the pin
+    // reads LOW whether or not the button is pressed. A real board uses a pull
+    // resistor (the Tang Nano's own buttons have 10K pull-ups); so does this.
+    it('a pull-up input plus a switch to ground reads HIGH open, LOW closed', () => {
+        const engine = new CircuitEngine();
+        const elm = new ExtChipElm(0, 0, 100, 0, 0, ['ws://x', 'btn:in:pu10k', '1000000', '', '']);
+        elm.preStamp();
+        const inPost = elm.getPost(0)!;
+
+        // The "switch" is a resistor to ground: 1 ohm closed, 1e9 open.
+        const sw = new ResistorElm(inPost.x, inPost.y, inPost.x + 64, inPost.y, 0, ['1e9']);
+        const gnd = new GroundElm(inPost.x + 64, inPost.y, inPost.x + 64, inPost.y, 0);
+
+        engine.elmList = [elm, sw, gnd];
+        engine.analyzeAndStamp();
+        for (let i = 0; i < 5; i++) engine.stepOnce();
+        expect(elm.volts[0]).toBeCloseTo(3.3, 1);
+        expect(elm.inputBits & 1).toBe(1);      // not pressed -> HIGH
+
+        sw.resistance = 1;
+        engine.analyzeAndStamp();
+        for (let i = 0; i < 5; i++) engine.stepOnce();
+        expect(elm.volts[0]).toBeLessThan(0.1);
+        expect(elm.inputBits & 1).toBe(0);      // pressed -> LOW
+    });
+
+    it('a pull-down input holds the pin at 0V when nothing drives it', () => {
+        const engine = new CircuitEngine();
+        const elm = new ExtChipElm(0, 0, 100, 0, 0, ['ws://x', 'sw:in:pd4k7', '1000000', '', '']);
+        elm.preStamp();
+        const inPost = elm.getPost(0)!;
+        const gnd = new GroundElm(900, 900, 900, 900, 0);
+
+        engine.elmList = [elm, gnd];
+        engine.analyzeAndStamp();
+        for (let i = 0; i < 5; i++) engine.stepOnce();
+        expect(elm.volts[0]).toBeCloseTo(0, 3);
+        expect(elm.inputBits & 1).toBe(0);
+
+        // A 3.3V rail through 1k beats the 4k7 pull-down.
+        const rail = new RailElm(inPost.x, inPost.y - 64, inPost.x, inPost.y - 64, 0, 0);
+        rail.maxVoltage = 3.3;
+        const r = new ResistorElm(inPost.x, inPost.y - 64, inPost.x, inPost.y, 0, ['1000']);
+        engine.elmList = [elm, r, rail, gnd];
+        engine.analyzeAndStamp();
+        for (let i = 0; i < 5; i++) engine.stepOnce();
+        expect(elm.volts[0]).toBeGreaterThan(ExtChipElm.THRESHOLD);
+        expect(elm.inputBits & 1).toBe(1);
+    });
+
+    // The single most common beginner circuit. As an ideal 0-ohm source this
+    // asked the solver for unbounded current through the LED; with a real
+    // driver impedance it gives the physical answer instead.
+    it('an output driving a bare short delivers bounded current', () => {
+        const engine = new CircuitEngine();
+        const elm = new ExtChipElm(0, 0, 100, 0, 0, ['ws://x', 'led:out', '1000000', '', '']);
+        elm.preStamp();
+        const outPost = elm.getPost(0)!;
+
+        const short = new ResistorElm(outPost.x, outPost.y, outPost.x + 64, outPost.y, 0, ['0.001']);
+        const gnd = new GroundElm(outPost.x + 64, outPost.y, outPost.x + 64, outPost.y, 0);
+        engine.elmList = [elm, short, gnd];
+        engine.analyzeAndStamp();
+
+        elm.outputBits = 1;
+        for (let i = 0; i < 5; i++) engine.stepOnce();
+
+        expect(elm.volts[0]).toBeLessThan(0.05);          // pulled down by the short
+        const current = Math.abs(short.current);
+        expect(current).toBeGreaterThan(0);
+        // ~100 mA, the order of magnitude a real 3.3V pad delivers into a
+        // short -- finite, and recognisably "too much" rather than nonsense.
+        expect(current).toBeLessThan(0.2);
+        expect(current).toBeCloseTo(3.3 / ExtChipElm.OUTPUT_RESISTANCE, 2);
     });
 
     it('unconfigured (no pins) analyzes fine inside an unrelated circuit', () => {

@@ -52,8 +52,8 @@ export interface CoSimTarget {
 
 // Active-HIGH, deliberately UNLIKE the real Tang Nano 9K (whose LEDs and
 // buttons are both active-LOW, pulled up by 10K on-board resistors).
-// ExtChipElm drives an ideal push-pull 0/3.3V and its inputs are plain
-// thresholds, so active-HIGH is the convention that matches what a beginner
+// ExtChipElm drives push-pull 0/3.3V behind a small output resistance and
+// thresholds its inputs, so active-HIGH is the convention that matches what a beginner
 // actually builds on the canvas: pin -> resistor -> LED -> ground, and
 // 3V3 -> switch -> pin. fpgasim's own standalone editor keeps the real
 // board's active-LOW default; the divergence is intentional and is called
@@ -104,10 +104,16 @@ int main(void) {
 // Net names/order lifted from fpgasim's boards/tangnano9k.js PERIPHERAL_PINS
 // (the two on-board buttons + the 6-LED bar), so a design written against the
 // standalone simulator's net names lines up here without renaming anything.
+// The buttons carry 10k PULL-DOWNS. Without a pull, an input wired only to a
+// switch floats when the switch is open, the Analyzer shunts it to ground
+// through 1e8 ohm, and the button reads the same pressed or not -- i.e. the
+// shipped demo would appear broken. Pull-DOWN rather than the real board's
+// pull-up because this default source is active-HIGH: wire 3V3 -> switch ->
+// pin and pressing reads 1, which is what the Verilog below expects.
 export const TANG_NANO_9K_PIN_SPEC =
-    "btn1:in,btn2:in,leds[0]:out,leds[1]:out,leds[2]:out,leds[3]:out,leds[4]:out,leds[5]:out";
+    "btn1:in:pd10k,btn2:in:pd10k,leds[0]:out,leds[1]:out,leds[2]:out,leds[3]:out,leds[4]:out,leds[5]:out";
 
-export const BLUE_PILL_PIN_SPEC = "PA0:in,PC13:out";
+export const BLUE_PILL_PIN_SPEC = "PA0:in:pd10k,PC13:out";
 
 export const TARGETS: CoSimTarget[] = [
     {
@@ -136,7 +142,7 @@ export const TARGETS: CoSimTarget[] = [
         wiringNotes: [
             "Outputs are push-pull 0 / 3.3 V; inputs switch at 1.65 V.",
             "LED: pin → 220 Ω → LED anode, cathode → ground.",
-            "Button: 3V3 → switch → pin (give the pin a pull-down).",
+            "Button: 3V3 → switch → pin. The default pins already carry 10k pull-downs.",
             "Active-HIGH, unlike the real board — its LEDs and buttons are active-LOW.",
             "clk is driven by the backend and is not a bridge pin, so it has no post.",
         ],

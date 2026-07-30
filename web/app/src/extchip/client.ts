@@ -24,6 +24,8 @@
 //   extChipRegistry.onSimTime(id, engine.t * 1e9);
 //   elm.outputBits = extChipRegistry.getOutputs(id);
 
+import { parseExtChipPinSpec } from "@fulgurlab/engine";
+
 export type ExtChipStatus = "unconfigured" | "connecting" | "compiling" | "running" | "resetting" | "ended" | "error";
 
 export interface ExtChipConfig {
@@ -81,25 +83,27 @@ interface ChipRecord {
     settleWaiters: (() => void)[];
 }
 
-// "rst:in,led[0]:out" -> [{name,dir}] or {error} -- byte-for-byte the same
-// grammar as the removed war/fulgur-bridge.js's parsePinSpec()/ExtChipElm.java's
-// parsePinSpec() (name:in|out, comma-separated, no duplicate names, <= 32
-// pins). Blank entries between commas are skipped, same as both references.
+// "rst:in,led[0]:out" -> [{name,dir}] or {error}.
+//
+// Delegates the GRAMMAR to the engine's own parseExtChipPinSpec() rather than
+// keeping a second copy of it. The two were byte-identical transliterations of
+// ExtChipElm.java's parsePinSpec(), which was fine until the grammar grew pull
+// options ("btn1:in:pu10k") -- at which point two copies is not duplication,
+// it is a guaranteed disagreement about what a saved circuit means.
+//
+// The element returns [] for anything malformed (a bad spec is a placeable
+// inert block, not a construction failure); this layer still needs to tell
+// "empty" from "broken" to report it, hence the wrapper. Pull options are
+// dropped here: they are electrical, and the bridge only cares about names,
+// directions and order.
 function parsePinSpec(spec: string): { pins: ExtChipPinInfo[] } | { error: string } {
-    const pins: ExtChipPinInfo[] = [];
-    const seen = new Set<string>();
-    for (const raw of String(spec || "").split(",")) {
-        const s = raw.trim();
-        if (!s) continue;
-        const m = /^([^:\s]+)\s*:\s*(in|out)$/.exec(s);
-        if (!m) return { error: "bad pin spec entry: " + s };
-        if (seen.has(m[1])) return { error: "duplicate pin " + m[1] };
-        seen.add(m[1]);
-        pins.push({ name: m[1], dir: m[2] as "in" | "out" });
+    const text = String(spec || "");
+    const parsed = parseExtChipPinSpec(text).map(({ name, dir }) => ({ name, dir }));
+    if (parsed.length === 0) {
+        return { error: text.trim() === "" ? "empty pin spec" : "bad pin spec: " + text };
     }
-    if (pins.length === 0) return { error: "empty pin spec" };
-    if (pins.length > 32) return { error: "at most 32 pins" };
-    return { pins };
+    if (parsed.length > 32) return { error: "at most 32 pins" };
+    return { pins: parsed };
 }
 
 // Bit packing is per-direction (LSB = first "in"/"out" pin respectively) --
