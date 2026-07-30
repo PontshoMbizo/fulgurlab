@@ -5,6 +5,7 @@ import { ExtChipElm } from '../src/elements/ext_chip';
 import { ResistorElm } from '../src/elements/resistor';
 import { GroundElm } from '../src/elements/ground';
 import { RailElm } from '../src/elements/voltage';
+import { WireElm } from '../src/elements/wire';
 
 describe('ExtChipElm registration + dump round-trip', () => {
     it('is registered under dump type "460" via the factory', () => {
@@ -90,15 +91,47 @@ describe('ExtChipElm pin geometry', () => {
         expect(pC.y).toBeLessThan(pA.y);
     });
 
-    it('board footprint widens with pin count but keeps a fixed real-board aspect ratio', () => {
+    it('board footprint widens with pin count and stays near the real-board aspect ratio', () => {
         const small = new ExtChipElm(0, 0, 100, 0, 0, ['ws://x', 'a:in', '1000000', '', '']);
         small.preStamp();
         const wide = new ExtChipElm(0, 0, 100, 0, 0, ['ws://x', 'a:in,b:in,c:in,d:in,e:in,f:in', '1000000', '', '']);
         wide.preStamp();
 
         expect(wide.boardWidth).toBeGreaterThan(small.boardWidth);
-        // both stay at the same photographed aspect ratio
-        expect(small.boardWidth / small.boardHeight).toBeCloseTo(wide.boardWidth / wide.boardHeight, 5);
+        // boardHeight is grid-quantized (see ExtChipElm.GRID), so the aspect
+        // ratio is no longer EXACTLY equal between sizes -- it is only as
+        // close as half a grid cell allows. Being on-grid outweighs being
+        // photographically exact: an off-grid south row is unwireable.
+        for (const elm of [small, wide]) {
+            const err = Math.abs(elm.boardWidth / elm.boardHeight - ExtChipElm.ASPECT);
+            expect(err).toBeLessThan(0.2);
+        }
+    });
+
+    // REGRESSION: _boardHeight used to be `boardWidth / ASPECT` verbatim, which
+    // is a multiple of nothing (8 cols -> 472.32). Since core/node.ts merges
+    // nodes on an EXACT `${x},${y}` string match and the app snaps wire ends to
+    // the 16px grid, every SOUTH-row (input) post was permanently unreachable
+    // by wire while the north row worked fine. Assert the invariant directly.
+    it('every post lands on the 16px grid, for every pin count', () => {
+        const grid = ExtChipElm.GRID;
+        for (let n = 1; n <= 20; n++) {
+            const spec = Array.from({ length: n }, (_, i) => `i${i}:in`)
+                .concat(Array.from({ length: n }, (_, i) => `o${i}:out`))
+                .join(',');
+            // x,y themselves on-grid, as any placed element's would be
+            const elm = new ExtChipElm(64, 128, 164, 128, 0, ['ws://x', spec, '1000000', '', '']);
+            elm.preStamp();
+
+            expect(elm.boardHeight % grid).toBe(0);
+            expect(elm.boardWidth % grid).toBe(0);
+            expect(elm.getPostCount()).toBe(2 * n);
+            for (let j = 0; j < elm.getPostCount(); j++) {
+                const p = elm.getPost(j)!;
+                expect(p.x % grid, `post ${j} x off-grid at ${n} pins`).toBe(0);
+                expect(p.y % grid, `post ${j} y off-grid at ${n} pins`).toBe(0);
+            }
+        }
     });
 
     it('setPinSpec() re-derives pins and stays preStamp-safe', () => {
@@ -149,6 +182,42 @@ describe('ExtChipElm electrical behavior', () => {
         engine.analyzeAndStamp();
         for (let i = 0; i < 5; i++) engine.stepOnce();
 
+        expect(elm.inputBits & 1).toBe(1);
+
+        rail.maxVoltage = 0;
+        engine.analyzeAndStamp();
+        for (let i = 0; i < 5; i++) engine.stepOnce();
+        expect(elm.inputBits & 1).toBe(0);
+    });
+
+    // THE regression test for the off-grid-post bug. The two tests above drive
+    // the pins by placing the rail/resistor directly ON the post coordinates,
+    // which works whether or not the post is on-grid -- so neither of them
+    // could ever have caught it. This one goes through a WIRE whose endpoint
+    // has been grid-snapped exactly the way canvas/draw.ts's snap() does,
+    // which is the only path a real user has.
+    it('a grid-snapped wire connects to an INPUT post and drives it', () => {
+        const grid = ExtChipElm.GRID;
+        const snap = (v: number) => Math.round(v / grid) * grid;
+
+        const engine = new CircuitEngine();
+        const elm = new ExtChipElm(64, 64, 164, 64, 0, ['ws://x', 'rst:in,led:out', '1000000', '', '']);
+        elm.preStamp();
+        const inPost = elm.getPost(0)!;
+
+        // Snapping must be a no-op: if it is not, no wire can ever reach here.
+        expect({ x: snap(inPost.x), y: snap(inPost.y) }).toEqual({ x: inPost.x, y: inPost.y });
+
+        // Wire from the input post out to a rail 160px south, as if drawn.
+        const farX = snap(inPost.x), farY = snap(inPost.y + 160);
+        const wire = new WireElm(snap(inPost.x), snap(inPost.y), farX, farY);
+        const rail = new RailElm(farX, farY, farX, farY, 0, 0);
+        rail.maxVoltage = 3.3;
+        const gnd = new GroundElm(1000, 1000, 1000, 1000, 0);
+
+        engine.elmList = [elm, wire, rail, gnd];
+        engine.analyzeAndStamp();
+        for (let i = 0; i < 5; i++) engine.stepOnce();
         expect(elm.inputBits & 1).toBe(1);
 
         rail.maxVoltage = 0;

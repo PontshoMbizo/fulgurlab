@@ -88,13 +88,29 @@ export class ExtChipElm extends CircuitElm {
     // between the rows). Still absolute `x,y + offset` posts independent of
     // point2/rotation, same non-rotating-block convention as before.
     //
+    // EVERY POST MUST LAND ON THE 16px GRID. This is not cosmetic: node
+    // merging in core/node.ts keys the node map on pointKey(p) =
+    // `${p.x},${p.y}`, an EXACT STRING MATCH with no tolerance, and the app
+    // snaps wire endpoints to the grid (canvas/draw.ts's GRID_SIZE, mirrored
+    // by GRID below). A post that lands off-grid is therefore not merely
+    // ugly -- it is UNREACHABLE BY WIRE, permanently.
+    //
     // CSPC2/LEAD are 5x the original size (160/80, was 32/16) per an
-    // explicit "make it 5x larger" request -- both remain multiples of the
-    // circuit grid (16px), so posts still land on-grid. ExtChipBody.tsx
-    // mirrors these two values exactly (same duplication pattern as before);
-    // ASPECT/SIZE_X are unchanged since they're ratios/column-counts, not
-    // absolute sizes.
+    // explicit "make it 5x larger" request; both are multiples of GRID, so
+    // the x coordinates (x + 80 + 160i) and the north row (y - 80) are
+    // on-grid by construction. The SOUTH row is not: it is offset by
+    // _boardHeight, which is derived from the photographed ASPECT ratio and
+    // is a multiple of nothing. setPoints() quantizes it for exactly this
+    // reason -- an earlier version of this comment claimed the invariant
+    // held while the code silently broke it for every input pin.
+    // ExtChipBody.tsx mirrors CSPC2/LEAD and reads boardWidth/boardHeight
+    // off the instance, so the drawn board follows the quantization for
+    // free. SIZE_X is a column count, ASPECT a ratio; neither is a length.
     static CSPC2 = 160;
+    // Mirror of web/app/src/canvas/draw.ts's GRID_SIZE. Duplicated rather
+    // than imported because the engine package is headless and must not
+    // depend on the app -- same duplication convention as CSPC2/LEAD above.
+    static GRID = 16;
     // Minimum row length in pin-columns, so a chip with few/no pins still
     // shows a board at roughly the real part's proportions instead of a
     // sliver.
@@ -228,7 +244,13 @@ export class ExtChipElm extends CircuitElm {
         const cspc2 = ExtChipElm.CSPC2;
         const cols = Math.max(this.inPins.length, this.outPins.length, ExtChipElm.SIZE_X);
         this._boardWidth = cols * cspc2;
-        this._boardHeight = this._boardWidth / ExtChipElm.ASPECT;
+        // Quantized to the grid so `southY` below stays on-grid and the input
+        // row is reachable by a snapped wire endpoint -- see the class comment
+        // on GRID for why an off-grid post can never be connected at all.
+        // Rounding (not flooring) keeps the drawn board closest to the real
+        // part's ASPECT; the residual error is at most half a grid cell.
+        const grid = ExtChipElm.GRID;
+        this._boardHeight = Math.max(grid, Math.round(this._boardWidth / ExtChipElm.ASPECT / grid) * grid);
         // South row: inputs, below the board. North row: outputs, above it.
         // Both rows are column-indexed independently (a lopsided pin count,
         // e.g. 3 in / 1 out, just leaves unused columns on the shorter row --
