@@ -188,6 +188,84 @@ describe("ExtChipRegistry", () => {
         registry.dispose(12);
     });
 
+    // --- Async run-loop support (engine/store.ts's runLoop awaits these) ---
+
+    it("hasLiveSessions/pacingState only report chips with a live session", async () => {
+        expect(registry.hasLiveSessions()).toBe(false);
+        expect(registry.pacingState()).toEqual([]);
+
+        const srv = await scriptedBackend(PINS, (conn, msg) => {
+            conn.send(JSON.stringify({ type: "stepped", session: "s1", t_ns: msg.t_ns, outputs: {}, events: [] }));
+        });
+        registry.configure(21, cfg({ url: srv.url }));
+        await until(() => registry.getStatus(21).status === "running");
+
+        expect(registry.hasLiveSessions()).toBe(true);
+        expect(registry.pacingState()).toEqual([
+            { id: 21, steppedTNs: 0, quantumNs: QUANTUM, inflight: false },
+        ]);
+
+        registry.dispose(21);
+        expect(registry.hasLiveSessions()).toBe(false);
+        await srv.close();
+    });
+
+    it("settled() resolves on the reply, and is null with nothing in flight", async () => {
+        const srv = await scriptedBackend(PINS, (conn, msg) => {
+            // Reply only after a real delay, so the promise genuinely has to
+            // wait rather than resolving in the same tick.
+            setTimeout(() => conn.send(JSON.stringify({
+                type: "stepped", session: "s1", t_ns: msg.t_ns, outputs: { led: 1 }, events: [],
+            })), 40);
+        });
+        registry.configure(22, cfg({ url: srv.url }));
+        await until(() => registry.getStatus(22).status === "running");
+
+        expect(registry.settled(22)).toBeNull();          // nothing in flight yet
+
+        registry.onSimTime(22, QUANTUM);                  // fires a step
+        const pending = registry.settled(22);
+        expect(pending).not.toBeNull();
+        await pending;
+        expect(registry.getOutputs(22)).toBe(1);
+        expect(registry.settled(22)).toBeNull();          // settled, so nothing to wait on
+
+        registry.dispose(22);
+        await srv.close();
+    });
+
+    // A backend that never answers must not freeze the simulation forever: the
+    // loop awaits settled(), so this promise RESOLVING (never rejecting -- an
+    // unhandled rejection on the loop's hot path would kill it) is what lets
+    // the loop carry on and the user see why.
+    it("settled() resolves on timeout and leaves the chip in error", async () => {
+        const srv = await scriptedBackend(PINS, () => { /* deliberate silence */ });
+        registry.configure(23, cfg({ url: srv.url }));
+        await until(() => registry.getStatus(23).status === "running");
+
+        registry.onSimTime(23, QUANTUM);
+        await registry.settled(23, 60);
+
+        expect(registry.getStatus(23).status).toBe("error");
+        expect(registry.getStatus(23).detail).toMatch(/timeout/i);
+
+        registry.dispose(23);
+        await srv.close();
+    });
+
+    it("settled() resolves when the chip is disposed out from under it", async () => {
+        const srv = await scriptedBackend(PINS, () => { /* silence */ });
+        registry.configure(24, cfg({ url: srv.url }));
+        await until(() => registry.getStatus(24).status === "running");
+
+        registry.onSimTime(24, QUANTUM);
+        const pending = registry.settled(24, 5000);
+        registry.dispose(24);
+        await pending;   // would hang for the full 5s if dispose() didn't drain
+
+        await srv.close();
+    });
+
     it("adopts the backend's pins when the element's pinSpec is empty", async () => {
         const adopted = [{ name: "a", dir: "in" as const }, { name: "b", dir: "out" as const }, { name: "c", dir: "out" as const }];
         const srv = await scriptedBackend(adopted, (conn) => {

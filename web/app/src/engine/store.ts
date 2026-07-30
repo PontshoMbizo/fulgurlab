@@ -3,6 +3,15 @@
 import { CircuitEngine, CircuitElm, CircuitParser, createElement } from "@fulgurlab/engine";
 import { extChipRegistry } from "@/extchip/client";
 import { extChipId } from "@/extchip/ids";
+import { pacingDecision } from "./cosimPacing";
+import { alignedMaxTimeStep } from "./timestepAlign";
+
+// Guard rail, not a tuning knob -- see timestepAlign.ts. High enough never to
+// bind at sane settings (a 1 ms quantum at the default 5 us timestep is 200
+// steps), because when it binds it coarsens the timestep below what the
+// circuit asked for and quietly costs analog accuracy. It only catches ratios
+// that would otherwise wedge a frame outright.
+const MAX_STEPS_PER_QUANTUM = 2000;
 
 // Bounded so a very long editing session can't grow this without limit --
 // 100 steps is generous for a circuit editor (Falstad's own app has no
@@ -71,6 +80,28 @@ export class EngineStore {
     private listeners = new Set<() => void>();
     private rafHandle: number | null = null;
     stepsPerFrame = 4;
+
+    // --- Async run loop state ---------------------------------------------
+    //
+    // `running` is the authoritative flag; `rafHandle` only tracks a pending
+    // frame so stop() can cancel it. `runGen` is bumped by anything that ends
+    // or restarts the loop, so a loop iteration suspended in `await` can tell
+    // on resumption that it has been superseded and return without touching a
+    // circuit that may have been replaced underneath it.
+    private running = false;
+    private runGen = 0;
+    // Wall-clock budget per animation frame. The rest of the ~16 ms is left to
+    // React's re-render and the browser's paint.
+    private static FRAME_BUDGET_MS = 10;
+    // Backstop for a circuit so cheap that the budget alone would let it run
+    // away (and starve the event loop that delivers bridge replies).
+    private static HARD_STEP_CAP = 20_000;
+    // Memoized list of co-simulated elements (dump type 460). Rebuilt lazily;
+    // invalidated by anything that replaces or edits elmList. Worth caching
+    // because stepOnceSafe() used to run String(elm.getDumpType()) over EVERY
+    // element on EVERY step -- fine at 4 steps/frame, hundreds of thousands of
+    // throwaway strings per frame once the loop is budgeted rather than counted.
+    private extChipCache: CircuitElm[] | null = null;
 
     // Undo/redo: snapshots are this port's own extended dump text (see
     // engine.dump()/CircuitParser), not object clones -- restoring is just
@@ -141,6 +172,12 @@ export class EngineStore {
     // the same way reanalyze() guards analyzeAndStamp(), so a pathological
     // snapshot can't take down undo/redo with an unhandled exception.
     private loadSnapshot(text: string) {
+        // Before the reparse: CircuitParser builds all-new element instances,
+        // and extChipId() keys on object identity, so any chip session still
+        // open here becomes permanently unreachable (a leaked WebSocket and a
+        // leaked container) the instant the old instances are dropped.
+        this.disposeExtChips();
+        this.invalidateExtChips();
         try {
             new CircuitParser(this.engine).parse(text);
             this.status = { state: "idle" };
@@ -244,6 +281,9 @@ export class EngineStore {
     // unconnected-node handling (a large resistor to ground) means a
     // dangling half-built circuit just reads ~0V rather than crashing.
     reanalyze() {
+        // elmList may have gained or lost chips since the cache was built.
+        this.invalidateExtChips();
+        this.alignTimeStepToQuanta();
         try {
             this.engine.analyzeAndStamp();
             if (this.status.state === "error") this.status = { state: "idle" };
@@ -504,6 +544,8 @@ export class EngineStore {
 
     clear() {
         this.beginTransaction();
+        this.disposeExtChips();     // same leak as loadSnapshot(); see there
+        this.invalidateExtChips();
         this.engine.clear();
         this.selection = new Set();
         this.scopeChannels = [];
@@ -561,6 +603,66 @@ export class EngineStore {
         return null;
     }
 
+    /** Live co-simulated elements, memoized. Invalidate via invalidateExtChips(). */
+    private extChips(): CircuitElm[] {
+        if (this.extChipCache === null) {
+            this.extChipCache = this.engine.elmList.filter((e) => String(e.getDumpType()) === "460");
+        }
+        return this.extChipCache;
+    }
+
+    invalidateExtChips() {
+        this.extChipCache = null;
+    }
+
+    /** Test seam: the cache is private, but its invalidation is the bug-prone part. */
+    extChipCountForTest() { return this.extChips().length; }
+
+    /**
+     * Match the engine's timestep to the co-simulation quanta so quantum
+     * boundaries land exactly on step boundaries, and so a rendezvous costs a
+     * handful of solver steps rather than the 200 that the default 5 us
+     * timestep implies against a 1 ms quantum. See engine/timestepAlign.ts.
+     *
+     * `desiredMaxTimeStep` is remembered so removing the last chip restores
+     * whatever the circuit's own `$` line asked for -- alignment must not be a
+     * one-way door that permanently coarsens a circuit's timestep.
+     */
+    private desiredMaxTimeStep: number | null = null;
+    private alignTimeStepToQuanta() {
+        const chips = this.extChips();
+        if (chips.length === 0) {
+            if (this.desiredMaxTimeStep !== null) {
+                this.engine.maxTimeStep = this.desiredMaxTimeStep;
+                this.engine.timeStep = this.desiredMaxTimeStep;
+                this.desiredMaxTimeStep = null;
+            }
+            return;
+        }
+        if (this.desiredMaxTimeStep === null) this.desiredMaxTimeStep = this.engine.maxTimeStep;
+
+        const quanta = chips.map((e) => (e as unknown as { quantumNs: number }).quantumNs);
+        const dt = alignedMaxTimeStep(quanta, this.desiredMaxTimeStep, MAX_STEPS_PER_QUANTUM);
+        if (dt === null) return;
+        this.engine.maxTimeStep = dt;
+        // stepOnce()'s adaptive halving may still take timeStep below this on a
+        // hard step; finishStep() walks it back up, so alignment self-heals.
+        this.engine.timeStep = dt;
+    }
+
+    /**
+     * Tear down the bridge sessions of every chip currently in the circuit.
+     *
+     * Required before anything that REPLACES elmList (undo/redo, import,
+     * clear): CircuitParser.parse() builds brand-new element instances, and
+     * extChipId() is a WeakMap keyed on object identity, so the outgoing
+     * chips' registry records become unreachable the moment the old instances
+     * are dropped -- leaking a WebSocket and a live container per undo.
+     */
+    private disposeExtChips() {
+        for (const elm of this.extChips()) extChipRegistry.dispose(extChipId(elm));
+    }
+
     stepOnceSafe(): boolean {
         try {
             this.engine.stepOnce();
@@ -571,8 +673,7 @@ export class EngineStore {
             // quantum), and pull the latest quantum-boundary outputs for the
             // NEXT step's voltage-source drives. Order per the client's
             // contract: setInputs -> onSimTime -> getOutputs.
-            for (const elm of this.engine.elmList) {
-                if (String(elm.getDumpType()) !== "460") continue;
+            for (const elm of this.extChips()) {
                 const chip = elm as unknown as { inputBits: number; outputBits: number };
                 const id = extChipId(elm);
                 extChipRegistry.setInputs(id, chip.inputBits);
@@ -588,31 +689,97 @@ export class EngineStore {
         }
     }
 
-    isRunning() { return this.rafHandle !== null; }
+    isRunning() { return this.running; }
+
+    // --- The run loop ------------------------------------------------------
+    //
+    // Co-simulation is a rendezvous: once per quantum the circuit solver and
+    // the backend exchange pin state, and the circuit must not run past a
+    // boundary whose reply is still outstanding. The old loop expressed that
+    // wait by having the bridge client call engineStore.stop() --
+    // cancelAnimationFrame -- and engineStore.run() on the reply. That works,
+    // but it means a reply can only ever be consumed on an animation-frame
+    // boundary, capping the whole simulation at one quantum per frame and
+    // making the wait cost a full frame instead of a round trip.
+    //
+    // Awaiting the reply directly instead lets many rendezvous complete inside
+    // one frame -- a local round trip is well under a millisecond -- which is
+    // the difference between "roughly 800x slower than real time" and "roughly
+    // real time". See docs/bridge-protocol.md and engine/cosimPacing.ts.
+    //
+    // WITH NO CO-SIM CHIPS THE BEHAVIOUR IS UNCHANGED, deliberately: exactly
+    // `stepsPerFrame` steps per frame, no clock reads, no registry calls. The
+    // budget must not silently speed up every existing pure-analog circuit --
+    // that would quietly redefine what the speed slider means.
 
     run() {
-        if (this.rafHandle !== null) return;
+        if (this.running) return;
+        this.running = true;
         this.status = { state: "running" };
-        const loop = () => {
-            for (let i = 0; i < this.stepsPerFrame; i++) {
-                if (!this.stepOnceSafe()) break;
-            }
-            this.bump();
-            if (this.rafHandle !== null) {
-                this.rafHandle = requestAnimationFrame(loop);
-            }
-        };
-        this.rafHandle = requestAnimationFrame(loop);
         this.bump();
+        void this.runLoop(++this.runGen);
     }
 
     stop() {
+        this.running = false;
+        // Supersede any loop iteration currently suspended in an await, so it
+        // returns instead of stepping a circuit that may since have been
+        // replaced (undo, import, clear).
+        this.runGen++;
         if (this.rafHandle !== null) {
             cancelAnimationFrame(this.rafHandle);
             this.rafHandle = null;
         }
         if (this.status.state === "running") this.status = { state: "idle" };
         this.bump();
+    }
+
+    private nextFrame(): Promise<void> {
+        return new Promise((resolve) => {
+            this.rafHandle = requestAnimationFrame(() => {
+                this.rafHandle = null;
+                resolve();
+            });
+        });
+    }
+
+    private async runLoop(gen: number) {
+        while (gen === this.runGen) {
+            const coSim = extChipRegistry.hasLiveSessions();
+            const deadline = performance.now() + EngineStore.FRAME_BUDGET_MS;
+            let steps = 0;
+
+            while (gen === this.runGen) {
+                if (coSim) {
+                    const decision = pacingDecision(this.engine.t * 1e9, extChipRegistry.pacingState());
+                    if (decision.kind === "wait") {
+                        const pending = extChipRegistry.settled(decision.id);
+                        if (pending) {
+                            this.bump();       // paint the "waiting on bridge" state
+                            await pending;
+                            if (gen !== this.runGen) return;
+                            // Re-decide rather than stepping: another chip may
+                            // still be blocking this same boundary.
+                            continue;
+                        }
+                    }
+                }
+
+                if (!this.stepOnceSafe()) return;   // stepOnceSafe() already stopped us
+                steps++;
+
+                if (!coSim) {
+                    if (steps >= this.stepsPerFrame) break;
+                } else if (steps >= this.stepsPerFrame &&
+                           (performance.now() >= deadline || steps >= EngineStore.HARD_STEP_CAP)) {
+                    break;
+                }
+            }
+
+            if (gen !== this.runGen) return;
+            this.bump();
+            await this.nextFrame();
+        }
     }
 
     step() {
@@ -642,3 +809,18 @@ export class EngineStore {
 // One instance for the whole app (module singletons are per-tab in Next's
 // client bundle, which is exactly the single-circuit-editor scope we want).
 export const engineStore = new EngineStore();
+
+// The bridge client's legacy backpressure path calls SimControl.pause()/
+// resume(), whose default implementation is engineStore.stop()/run(). Under
+// the async loop that is actively harmful: stop() bumps runGen and ends the
+// loop, and the matching resume() may never arrive.
+//
+// The path is not dead -- onSimTime() still sends and pauses within a single
+// call when a quantum is shorter than one timestep -- so it needs a
+// destination, not deletion. Waiting is now the loop's own job (it awaits
+// settled()), so pausing is a no-op here and the pacing decision stays in one
+// place instead of being split across two mechanisms that can disagree.
+extChipRegistry.setSimControl({
+    pause() { /* handled by runLoop()'s pacingDecision/settled() wait */ },
+    resume() { /* ditto */ },
+});

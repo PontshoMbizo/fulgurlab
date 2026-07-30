@@ -427,6 +427,59 @@ describe("EngineStore: run control and subscriptions", () => {
         expect(store.isRunning()).toBe(false);
     });
 
+    // The async loop can be suspended in `await` across a stop(). It must
+    // notice on resumption that it has been superseded, rather than stepping a
+    // circuit that undo/import may have replaced underneath it.
+    it("run/stop is generation-counted, so a stopped loop stays stopped", async () => {
+        const frames: (() => void)[] = [];
+        const g = globalThis as unknown as {
+            requestAnimationFrame?: (cb: FrameRequestCallback) => number;
+            cancelAnimationFrame?: (h: number) => void;
+        };
+        const priorRaf = g.requestAnimationFrame;
+        const priorCancel = g.cancelAnimationFrame;
+        g.requestAnimationFrame = (cb: FrameRequestCallback) => {
+            frames.push(() => cb(0));
+            return frames.length;
+        };
+        g.cancelAnimationFrame = () => {};
+
+        try {
+            divider(store);
+            store.run();
+            expect(store.isRunning()).toBe(true);
+            expect(frames.length).toBe(1);       // loop parked on the next frame
+
+            store.stop();
+            expect(store.isRunning()).toBe(false);
+
+            // Deliver the frame the stopped loop was waiting on: it must not
+            // resume, and must not schedule another.
+            const before = frames.length;
+            frames[before - 1]();
+            await Promise.resolve();
+            expect(store.isRunning()).toBe(false);
+            expect(frames.length).toBe(before);
+        } finally {
+            g.requestAnimationFrame = priorRaf;
+            g.cancelAnimationFrame = priorCancel;
+        }
+    });
+
+    it("the ext-chip cache tracks elmList across add/import/clear", () => {
+        const fpga = createElement("460", 0, 0, 64, 0, 0,
+            ["ws://x", "a:in,b:out", "1000000", "\\0", "\\0", "1000000", "tangnano9k"])!;
+        store.addElement(fpga);
+        expect(store.extChipCountForTest()).toBe(1);
+
+        store.clear();
+        expect(store.extChipCountForTest()).toBe(0);
+
+        // Undo restores the chip -- as a BRAND NEW instance, via reparse.
+        store.undo();
+        expect(store.extChipCountForTest()).toBe(1);
+    });
+
     it("stepOnceSafe reports failure rather than throwing on a broken circuit", () => {
         const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
         store.importText("$ 1 0.000005 10 50 5 50\nr 0 0 64 0 0 1000");
