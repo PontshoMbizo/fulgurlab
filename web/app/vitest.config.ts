@@ -1,15 +1,21 @@
 import { defineConfig } from "vitest/config";
+import path from "node:path";
 
-// Minimal config -- this app has exactly one test file today
-// (src/kicad/kicad.test.ts), covering the parser/model/bindings modules
-// only. `environment: "node"` is intentional and sufficient: none of the
-// tested modules touch the DOM (SymbolPreview.tsx is a component and is
-// deliberately excluded from test coverage per the task's scope -- see
-// kicad.test.ts's own header comment on why arc-to-path is re-verified as
-// plain geometry instead of importing the .tsx file). `exclude` adds
-// `.next` on top of vitest's own default excludes so a built app
-// (next build output) can never accidentally get swept into a test run.
+// `environment: "node"` is intentional and sufficient: nothing under test
+// touches the DOM. Components are deliberately out of scope (see
+// kicad.test.ts's header on why arc-to-path is re-verified as plain geometry
+// rather than by importing the .tsx file); the store's rAF loop is likewise
+// exercised through step()/stepOnceSafe() rather than run(). `exclude` adds
+// `.next` on top of vitest's own default excludes so a built app (next build
+// output) can never accidentally get swept into a test run.
 export default defineConfig({
+    // The app uses Next's "@/..." path alias (see tsconfig.json's paths); Vite
+    // does not read tsconfig paths, so it has to be declared here or any test
+    // that pulls in a module using the alias fails to resolve (engine/store.ts
+    // imports "@/extchip/client").
+    resolve: {
+        alias: { "@": path.resolve(__dirname, "src") },
+    },
     // `css: { postcss: {} }` stops Vite's own config loader from
     // auto-discovering this app's postcss.config.mjs (Tailwind v4's
     // `plugins: ["@tailwindcss/postcss"]` shorthand, resolved specially by

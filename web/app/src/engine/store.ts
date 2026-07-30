@@ -47,7 +47,10 @@ export type RunStatus =
     | { state: "running" }
     | { state: "error"; message: string };
 
-class EngineStore {
+// Exported (alongside the `engineStore` singleton at the bottom) so tests can
+// drive a FRESH store per case instead of sharing global state -- see
+// store.test.ts.
+export class EngineStore {
     engine = new CircuitEngine();
     version = 0;
     status: RunStatus = { state: "idle" };
@@ -78,11 +81,18 @@ class EngineStore {
     // whole gesture (e.g. a full drag, not one snapshot per mousemove) into
     // a single undo step -- see CircuitCanvas's startMove()/startPlace().
     private undoStack: string[] = [];
+    // Nesting depth for begin/endTransaction (see endTransaction's comment).
+    private transactionDepth = 0;
     private redoStack: string[] = [];
     private pendingSnapshot: string | null = null;
 
     canUndo() { return this.undoStack.length > 0; }
     canRedo() { return this.redoStack.length > 0; }
+    // Depths, not the stacks themselves: enough for a test (or a future UI
+    // affordance) to assert "this gesture was one undo step" without exposing
+    // the snapshot strings.
+    undoDepth() { return this.undoStack.length; }
+    redoDepth() { return this.redoStack.length; }
 
     // Call once BEFORE a mutation (or burst of mutations belonging to one
     // user gesture) that should become a single undo step. Re-entrant-safe:
@@ -91,6 +101,7 @@ class EngineStore {
     // also begins one (e.g. addElement) can't accidentally capture the
     // POST-mutation state as the "undo to" snapshot instead of the pre.
     private beginTransaction() {
+        this.transactionDepth++;
         if (this.pendingSnapshot !== null) return;
         this.pendingSnapshot = this.engine.dump();
     }
@@ -100,6 +111,16 @@ class EngineStore {
     // where it started (or an Escape-cancelled drag reverted back to its
     // original geometry) correctly produces no undo entry at all.
     private endTransaction() {
+        // BUGFIX (found by store.test.ts's nested-transaction case): begin was
+        // re-entrancy-guarded but end was not, so the FIRST inner mutation
+        // committed the outer gesture's snapshot and every later one became its
+        // own undo entry. A gesture that brackets a mutator which transacts
+        // internally -- beginMoveTransaction() around addElement(), or the
+        // canvas's paste path around duplicateSelection() -- therefore took
+        // several undos to unwind instead of one. Depth-counted now, so only
+        // the outermost end commits.
+        if (this.transactionDepth > 0) this.transactionDepth--;
+        if (this.transactionDepth > 0) return;
         const snapshot = this.pendingSnapshot;
         this.pendingSnapshot = null;
         if (snapshot === null) return;

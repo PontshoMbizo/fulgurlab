@@ -81,12 +81,25 @@ export const FIELD_SCHEMA: Record<string, FieldSchema[]> = {
     ],
     v: VOLTAGE_SOURCE_FIELDS,
     R: VOLTAGE_SOURCE_FIELDS,
+    // 164 is CounterElm. This entry used to hold CLOCK fields (frequency,
+    // amplitude, bias, ...) -- a leftover of the dump-id mix-up TODO.md P0-1
+    // was about, which meant editing a counter showed five boxes that wrote
+    // properties CounterElm does not have. A clock is a flagged RailElm and is
+    // edited through the "R" entry below.
     "164": [
-        { key: "frequency", label: "Frequency", type: "number", unit: "Hz" },
-        { key: "maxVoltage", label: "Amplitude", type: "number", unit: "V" },
-        { key: "bias", label: "DC Offset", type: "number", unit: "V" },
-        { key: "phaseShift", label: "Phase", type: "number", unit: "rad" },
-        { key: "dutyCycle", label: "Duty Cycle", type: "number", min: 0, max: 1, step: 0.05 },
+        { key: "bits", label: "# of Bits", type: "number", min: 1, max: 32, step: 1 },
+        { key: "modulus", label: "Modulus (0 = 2^bits)", type: "number", min: 0, step: 1 },
+        { key: "invertreset", label: "Invert reset pin", type: "checkbox" },
+    ],
+    // Diode / op-amp: both are among the most-edited elements and had no
+    // inspector fields at all (found by schema.test.ts's coverage case).
+    d: [
+        { key: "modelName", label: "Model", type: "text" },
+    ],
+    a: [
+        { key: "maxOut", label: "Max Output", type: "number", unit: "V" },
+        { key: "minOut", label: "Min Output", type: "number", unit: "V" },
+        { key: "gbw", label: "Gain-Bandwidth", type: "number", unit: "Hz" },
     ],
     s: [
         { key: "position", label: "State", type: "select", options: [{ value: 0, label: "Closed" }, { value: 1, label: "Open" }] },

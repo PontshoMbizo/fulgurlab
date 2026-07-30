@@ -50,9 +50,16 @@ function normalizeRect(ax: number, ay: number, bx: number, by: number): Rect {
 // labeled nodes) so a degenerate single-point element still has a valid
 // (zero-area) bbox rather than an empty/NaN one.
 export function elementBounds(elm: CircuitElm): Bounds {
+    // BUGFIX (found by draw.test.ts): this used to seed from point1/point2 and
+    // then only add posts from index 2 up, on the assumption that post 0/1 ARE
+    // point1/point2. That holds for a resistor but not for anything that fans
+    // its posts off the body line -- a MOSFET's post 1 (source) sits a full
+    // 16px off point2, so it fell outside the bounds and marquee selection
+    // judged the element by a box that did not contain all of it. Union every
+    // post AND both body endpoints.
     const pts: Point[] = [elm.point1, elm.point2];
     const n = elm.getPostCount();
-    for (let i = 2; i < n; i++) {
+    for (let i = 0; i < n; i++) {
         const p = elm.getPost(i);
         if (p) pts.push(p);
     }
