@@ -65,9 +65,16 @@ const TANG_NANO_SOURCE = `module top(
     output reg [5:0] leds
 );
 
+  // Initialised, and that matters in simulation: an uninitialised reg is X,
+  // X + 1 is X forever, and X propagates straight out to the pins -- the
+  // circuit then sees nothing at all. Real silicon powers up in some defined
+  // state; a simulator does not guess. (Declare the initial value HERE, not
+  // in the port list: an initialiser inside the ANSI port header confuses the
+  // backend's port parser, which then names the pin after the value.)
+  reg [21:0] counter = 0;
+
   // At the default 1 MHz board clock, bit 21 toggles about every 2 s, so
   // leds[5:0] reads as a slow running binary count.
-  reg [21:0] counter;
   always @(posedge clk) counter <= counter + 1;
 
   always @(posedge clk) begin
@@ -127,10 +134,19 @@ export const TARGETS: CoSimTarget[] = [
         defaultPinSpec: TANG_NANO_9K_PIN_SPEC,
         defaultQuantumNs: 1_000_000,
         // NOT the real board's 27 MHz. A 1 ms quantum at 27 MHz is 54,000
-        // clock-edge events for vvp per rendezvous, before the design does any
-        // work -- which is what made co-simulation unusably slow. 1 MHz keeps
-        // the same designs working roughly 27x cheaper. Pick 27 MHz below only
-        // when a design's timing genuinely depends on it.
+        // clock-edge events for vvp per rendezvous before the design does any
+        // work of its own.
+        //
+        // MEASURED against the real backend (podman + iverilog, 20 quanta of
+        // the default design, this machine):
+        //     10 kHz  ~118 quanta/s      1 MHz  ~113 quanta/s
+        //     27 MHz   ~35 quanta/s
+        // So dropping to 1 MHz buys about 3x, not the ~27x a naive
+        // edges-per-quantum argument predicts: roughly 8.5 ms of every
+        // rendezvous is fixed transport cost (ws -> container stdio -> vvp and
+        // back), and below ~1 MHz the clock is essentially free. Going finer
+        // than 1 MHz therefore costs nothing; going coarser buys nothing.
+        // Pick 27 MHz only when a design's timing genuinely depends on it.
         defaultClockHz: 1_000_000,
         clockPresets: [
             { label: "10 kHz — slowest, cheapest", hz: 10_000 },
