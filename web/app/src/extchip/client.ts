@@ -32,6 +32,13 @@ export interface ExtChipConfig {
     pinSpec: string;
     quantumNs: number;
     engine?: string;
+    /**
+     * Board clock the backend should synthesize, Hz. Additive proto-v1 field
+     * (docs/bridge-protocol.md); omitted when unset so a backend that predates
+     * it is unaffected. The main cost lever in co-simulation -- the real Tang
+     * Nano's 27 MHz is ~54,000 clock-edge events per 1 ms quantum.
+     */
+    clockHz?: number;
 }
 
 export interface ExtChipPinInfo {
@@ -224,7 +231,11 @@ export class ExtChipRegistry {
                 c.ws!.send(JSON.stringify({
                     type: "create",
                     source: c.cfg.source,
-                    config: { quantum_ns: c.cfg.quantumNs, engine: c.cfg.engine || undefined },
+                    config: {
+                        quantum_ns: c.cfg.quantumNs,
+                        engine: c.cfg.engine || undefined,
+                        clock_hz: c.cfg.clockHz && c.cfg.clockHz > 0 ? c.cfg.clockHz : undefined,
+                    },
                 }));
                 this.setStatus(c, "compiling");
                 return;

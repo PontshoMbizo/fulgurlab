@@ -5,7 +5,7 @@ import type { PaletteItem } from "@/palette/palette";
 import { PALETTE } from "@/palette/palette";
 import IconButton from "./IconButton";
 import PaletteFlyout from "./PaletteFlyout";
-import { PencilIcon, WaveformIcon, CursorIcon, ChevronDownIcon } from "./icons";
+import { PencilIcon, WaveformIcon, CursorIcon, ChevronDownIcon, CodeIcon } from "./icons";
 
 const WIRE_TOOL = PALETTE.find((p) => p.dumpType === "w")!;
 
@@ -25,6 +25,9 @@ interface Props {
     // edge case where a boolean toggling true->true wouldn't produce a new
     // value for the effect to react to.
     openFlyoutSignal?: number;
+    /** Firmware editor pane (editor/FirmwareEditorPane.tsx) visibility. */
+    editorOpen?: boolean;
+    onToggleEditor?: () => void;
 }
 
 // Top-left floating pill, transcribed from the reference mockup: Draw /
@@ -33,7 +36,7 @@ interface Props {
 // canvas to add it as a MATLAB-style scope channel) -- kept in the exact
 // same button slot the mockup reserved for it, so no new UI had to be
 // invented for this piece.
-export default function FloatingToolbar({ activeTool, onSelect, probeActive, onToggleProbe, openFlyoutSignal }: Props) {
+export default function FloatingToolbar({ activeTool, onSelect, probeActive, onToggleProbe, openFlyoutSignal, editorOpen, onToggleEditor }: Props) {
     const [flyoutOpen, setFlyoutOpen] = useState(false);
     const rootRef = useRef<HTMLDivElement>(null);
 
@@ -98,6 +101,15 @@ export default function FloatingToolbar({ activeTool, onSelect, probeActive, onT
                     <CursorIcon />
                 </IconButton>
                 <div className="w-px h-5 bg-white/[0.12]" />
+                <IconButton
+                    title="Firmware editor (V)"
+                    active={editorOpen}
+                    activeBg="rgba(255,255,255,.12)"
+                    activeColor="#fff"
+                    onClick={onToggleEditor}
+                >
+                    <CodeIcon />
+                </IconButton>
                 <IconButton
                     title="More tools"
                     active={isOther || flyoutOpen}

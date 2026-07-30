@@ -353,6 +353,52 @@ export class EngineStore {
     // field edits are already discrete, single-shot commits (the dialog
     // commits on blur/Enter/change, not per keystroke), so no caller-side
     // begin/endMoveTransaction bracketing is needed here.
+    /**
+     * Write several co-sim config fields as ONE undo step.
+     *
+     * The drawer used to call updateElementField() once per field, so a single
+     * "Apply" cost four undos to unwind. Same mechanics as updateElementField,
+     * just batched inside one transaction.
+     */
+    updateExtChipConfig(elm: CircuitElm, patch: Record<string, unknown>) {
+        this.beginTransaction();
+        Object.assign(elm as unknown as Record<string, unknown>, patch);
+        elm.preStamp();
+        this.reanalyze();
+        this.endTransaction();
+    }
+
+    /**
+     * Adopt the pin list the backend reported at `created` as the element's
+     * own, regenerating its posts.
+     *
+     * This is what makes compilation authoritative over the circuit: the pins
+     * you can wire to are the ports your firmware actually declares, not a
+     * hand-typed spec that can silently disagree with it.
+     *
+     * Deliberately its OWN undo entry, separate from the source edit that
+     * triggered the compile: configure() is async, so that edit's transaction
+     * has long since closed. Bracketing across the await instead would leave
+     * the transaction open forever if the bridge never answered, wedging undo.
+     *
+     * The idempotence guard matters -- without it every recompile of unchanged
+     * ports would push an undo entry and re-analyze the whole circuit.
+     */
+    setExtChipPins(elm: CircuitElm, pins: { name: string; dir: "in" | "out" }[]) {
+        const chip = elm as unknown as { pinSpec: string; setPinSpec(s: string): void };
+        const spec = pins.map((p) => `${p.name}:${p.dir}`).join(",");
+        if (chip.pinSpec === spec) return;
+        this.beginTransaction();
+        // setPinSpec() is the element's own config-edit entry point: it
+        // re-derives inPins/outPins, setPoints() and allocNodes(), which a
+        // plain field assignment cannot do (see ext_chip.ts).
+        chip.setPinSpec(spec);
+        elm.preStamp();
+        this.invalidateExtChips();
+        this.reanalyze();
+        this.endTransaction();
+    }
+
     updateElementField(elm: CircuitElm, key: string, value: unknown) {
         this.beginTransaction();
         const parts = key.split(".");

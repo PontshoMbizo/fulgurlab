@@ -132,3 +132,13 @@ export function FolderIcon({ size = 16 }: IconProps) {
         </svg>
     );
 }
+
+// Firmware editor toggle (chevrons, the near-universal "code" glyph).
+export function CodeIcon({ size = 16 }: IconProps) {
+    return (
+        <svg width={size} height={size} {...base} strokeWidth={2.2}>
+            <path d="M8 6l-5 6 5 6" />
+            <path d="M16 6l5 6-5 6" />
+        </svg>
+    );
+}

@@ -57,6 +57,8 @@ interface Props {
     onArmWireTool?: () => void;
     onOpenPalette?: () => void;
     onToggleProbeMode?: () => void;
+    /** Firmware editor pane visibility (V). Same callback-out pattern as above. */
+    onToggleEditor?: () => void;
     // Probe tool (Scopes button): while true, clicking an element toggles a
     // scope channel on it instead of selecting/moving it.
     probeMode?: boolean;
@@ -68,7 +70,7 @@ interface Props {
 }
 
 export default function CircuitCanvas({
-    activeTool, onDeactivateTool, onArmWireTool, onOpenPalette, onToggleProbeMode,
+    activeTool, onDeactivateTool, onArmWireTool, onOpenPalette, onToggleProbeMode, onToggleEditor,
     probeMode = false, onElementDoubleClick,
 }: Props) {
     useSyncExternalStore(engineStore.subscribe, engineStore.getVersion, engineStore.getVersion);
@@ -676,6 +678,14 @@ export default function CircuitCanvas({
         const resolveSingleTarget = (): CircuitElm | null => engineStore.selectedOne() ?? hovered;
 
         const onKeyDown = (e: KeyboardEvent) => {
+            // Typing guard runs BEFORE the Escape cascade, not only before the
+            // single-key shortcuts below. Escape inside a focused text field --
+            // notably the firmware editor's Monaco instance, whose hidden input
+            // is a <textarea> -- belongs to that field (dismiss autocomplete,
+            // leave a widget); leaking it out here also deselected on the
+            // canvas behind, which reads as the editor stealing your selection.
+            if (isTypingTarget()) return;
+
             // Escape cascade (requirement #6): exactly ONE of these four
             // steps fires per keypress, in this priority order, whichever is
             // the first one that actually applies. Every step after the
@@ -707,8 +717,6 @@ export default function CircuitCanvas({
                 return;
             }
 
-            if (isTypingTarget()) return; // every shortcut below is a typing-sensitive single-key or Ctrl-chord
-
             if (e.key === "Delete" || e.key === "Backspace") {
                 if (engineStore.selection.size > 0) {
                     engineStore.removeElements(engineStore.selection);
@@ -717,6 +725,12 @@ export default function CircuitCanvas({
                     engineStore.removeElement(hovered);
                     e.preventDefault();
                 }
+                return;
+            }
+
+            if (e.key === "v" || e.key === "V") {
+                onToggleEditor?.();
+                e.preventDefault();
                 return;
             }
 
@@ -853,7 +867,7 @@ export default function CircuitCanvas({
             window.removeEventListener("keydown", onKeyDown);
             window.removeEventListener("keyup", onKeyUp);
         };
-    }, [activeTool, probeMode, hovered, size, onDeactivateTool, onArmWireTool, onOpenPalette, onToggleProbeMode, onElementDoubleClick, startPickup]);
+    }, [activeTool, probeMode, hovered, size, onDeactivateTool, onArmWireTool, onOpenPalette, onToggleProbeMode, onToggleEditor, onElementDoubleClick, startPickup]);
 
     const worldTransform = `translate(${viewport.x} ${viewport.y}) scale(${viewport.scale})`;
     const cursor = activeTool ? "crosshair" : probeMode ? "pointer" : isPanning ? "grabbing" : spacePressed ? "grab" : "default";

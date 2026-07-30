@@ -20,7 +20,19 @@ const HEADER_H = 30; // legend/controls row height, shared by both docked and fl
 // Docked mode's resizable-height bounds (dragging the top edge), per the
 // task brief: never smaller than 140px, never more than 60% of the viewport.
 const DOCK_MIN_H = 140;
-const dockMaxH = () => (typeof window === "undefined" ? 600 : window.innerHeight * 0.6);
+// 60% of the SANDBOX, not of the viewport. Once the firmware editor can take
+// the top half of the screen (editor/editorUi.ts), the scope docks to the
+// bottom of the circuit pane rather than the window, so a viewport-derived
+// bound would let the dock overflow its own container. page.tsx publishes the
+// sandbox height as --fl-sandbox-h; falling back to innerHeight keeps this
+// correct when the editor is closed and the sandbox IS the viewport.
+const sandboxH = () => {
+    if (typeof window === "undefined") return 1000;
+    const raw = getComputedStyle(document.documentElement).getPropertyValue("--fl-sandbox-h");
+    const px = parseFloat(raw);
+    return Number.isFinite(px) && px > 0 ? px : window.innerHeight;
+};
+const dockMaxH = () => sandboxH() * 0.6;
 
 // Drag thresholds for the dock <-> float transitions -- both read as "the
 // cursor is now clearly somewhere else" rather than a minor jiggle, same
@@ -374,13 +386,13 @@ export default function Scope({ probeActive }: Props) {
                     panel will actually land. */}
                 {dropHint && (
                     <div
-                        className="fixed left-0 right-0 bottom-0 z-[5] pointer-events-none"
+                        className="absolute left-0 right-0 bottom-0 z-[5] pointer-events-none"
                         style={{ height: DOCK_MIN_H, background: "linear-gradient(to top, rgba(56,189,248,.18), transparent)", borderTop: "2px solid rgba(56,189,248,.6)" }}
                     />
                 )}
                 <div
                     ref={containerRef}
-                    className="fixed left-0 right-0 bottom-0 z-[6] border-t border-white/10 shadow-lg overflow-hidden flex flex-col select-none"
+                    className="absolute left-0 right-0 bottom-0 z-[6] border-t border-white/10 shadow-lg overflow-hidden flex flex-col select-none"
                     style={{
                         height: ui.dockHeight,
                         background: "rgba(18,18,20,.92)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)",
@@ -443,7 +455,7 @@ export default function Scope({ probeActive }: Props) {
         <>
             {dropHint && (
                 <div
-                    className="fixed left-0 right-0 bottom-0 z-[5] pointer-events-none"
+                    className="absolute left-0 right-0 bottom-0 z-[5] pointer-events-none"
                     style={{ height: DOCK_MIN_H, background: "linear-gradient(to top, rgba(56,189,248,.18), transparent)", borderTop: "2px solid rgba(56,189,248,.6)" }}
                 />
             )}
