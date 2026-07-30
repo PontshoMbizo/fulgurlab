@@ -42,7 +42,7 @@ Client → server:
 | type | fields | meaning |
 |---|---|---|
 | `hello` | `proto:1, client` | version handshake, first frame |
-| `create` | `source, config{quantum_ns?, top?, engine?, pins?}` | compile & start a session |
+| `create` | `source, config{quantum_ns?, top?, engine?, pins?, clock_hz?}` | compile & start a session |
 | `step` | `session, t_ns, inputs:{PIN:0\|1}` | advance one quantum |
 | `reset` | `session` | **reserved, not in v1** — restart the same build from t = 0 |
 | `dispose` | `session` | kill the session/container |
@@ -52,15 +52,30 @@ Server → client:
 | type | fields | meaning |
 |---|---|---|
 | `welcome` | `proto:1, backend:"fpgasim"\|"mcusim", version` | handshake reply |
-| `created` | `session, pins:[{name, dir:"in"\|"out"}], quantum_ns` | session ready |
+| `created` | `session, pins:[{name, dir:"in"\|"out"}], quantum_ns, clock_hz?` | session ready |
 | `stepped` | `session, t_ns, outputs:{PIN:0\|1}, events:[[t_ns,PIN,v],…]` | quantum done |
 | `reset_done` | `session` | **reserved, not in v1** — after `reset` |
-| `ended` | `session, reason` | sim finished (`$finish` / SYS_EXIT) — outputs freeze |
+| `ended` | `session, reason, log?` | sim finished (`$finish` / SYS_EXIT) — outputs freeze |
 | `disposed` | `session` | after `dispose` |
 | `error` | `session?, stage:"proto"\|"compile"\|"runtime"\|"timeout", log` | failure; session dead unless `stage:"proto"` |
 
 `events` carry intra-quantum **output** edges (backend-side timestamps) for waveform
 display only; the circuit solver applies boundary values only.
+
+**`config.clock_hz`** (additive, optional; a backend may ignore it) asks the backend to
+synthesize its board clock at the given rate instead of the real part's. `created.clock_hz`
+echoes the rate actually used. This is the main cost lever in co-simulation: at the Tang
+Nano's real 27 MHz a 1 ms quantum is ~54 000 clock-edge events for `vvp` to work through
+before the design does anything of its own. Backends clamp to a sane range (fpgasim:
+1 Hz – 200 MHz). mcusim has no synthesized clock and ignores the field — its core rate
+comes from `config.engine`.
+
+**`error stage:"compile"` on a session that never stepped.** A build that fails after
+`created` (the compiler runs inside the container, so `created` is sent optimistically)
+surfaces as an `error` with the compiler's log tail, followed by `ended`. Before this,
+such a session produced only a bare `ended` with no log, making a syntax error
+indistinguishable from firmware that simply ran to completion. `ended.log` carries the
+same tail.
 
 ### Reserved: `reset` / `reset_done`
 
@@ -98,7 +113,10 @@ pids/mem/cpu caps, non-root) in *session mode*, and relays quanta over stdio:
 - First stdin line: `##SRC <bytes>` then exactly that many source bytes; the remainder of
   stdin is the quantum stream.
 - Quantum request (stdin): `T <quantum_ns> <in_hex>`
-- Edge event (stdout): `E <t_ns> <pin_index> <0|1>`
+- Edge event (stdout): `E <t_ns> <out_hex>` — a full output-vector snapshot, not a
+  single pin. (This line read `E <t_ns> <pin_index> <0|1>` until 2026-07-30; both
+  reference backends have always emitted the hex form. The WS-level `stepped.events`
+  field is per-pin as documented above — the conversion happens in the bridge server.)
 - Quantum reply (stdout): `O <t_ns> <out_hex>` (terminates the quantum's output)
 - End (stdout): `X <reason>`
 - Pin order for the hex bitvectors = the `created.pins` array order, LSB = index 0.
