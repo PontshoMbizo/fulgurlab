@@ -5,7 +5,8 @@ import { CircuitNode, VoltageSource } from '../core/node';
 // lockstep bridge chip (docs/bridge-protocol.md). This is the ENGINE half
 // only: a pure CircuitElm with no sockets/timers/app imports. The actual
 // async ws exchange with an fpgasim/mcusim backend lives entirely in the
-// app's extchip/client.ts (ExtChipRegistry, ported from war/fulgur-bridge.js);
+// app's extchip/client.ts (ExtChipRegistry; the GWT-era war/fulgur-bridge.js it
+// was ported from has since been removed with the rest of the Java host);
 // the lead agent's store glue is the only thing that ever writes
 // `outputBits`/reads `inputBits` on an instance of this class.
 //
@@ -27,7 +28,7 @@ export interface ExtChipPin {
 }
 
 // "name:in,name:out,..." -> ordered pins, inputs first (bridge bit order),
-// same shape/order as war/fulgur-bridge.js's parsePinSpec() (:31-46) and
+// same shape/order as the removed war/fulgur-bridge.js's parsePinSpec() and
 // ExtChipElm.java's parsePinSpec() (:73-108) -- EXCEPT this returns an empty
 // array on any malformed entry/duplicate/empty spec instead of an error
 // object: an ExtChipElm with a bad or blank pin spec is a valid, PLACEABLE

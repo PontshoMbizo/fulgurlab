@@ -1,3 +1,15 @@
+> **STATUS (superseded in part).** This is the plan the rewrite was executed against,
+> kept for the design rationale and the per-phase decisions. Two things it assumes are
+> no longer true: the Java/GWT tree it calls "the Oracle"
+> (`src/com/lushprojects/circuitjs1/client/`) and the GWT bridge client
+> (`war/fulgur-bridge.js`) have both been **removed** — fulgurlab is pure TS/JS. The
+> oracle's role is now filled by recorded golden traces
+> (`web/engine/test/golden/fixtures`, replayed on every test run) and, for
+> re-recording, any externally compiled circuitjs1 site passed to
+> `tools/golden-recorder/record.mjs --site`. Where the plan says "port X from Java",
+> read it as done: every Java dump id has a TypeScript implementation, enforced by
+> `web/engine/test/dump-id-coverage.test.ts`.
+
 # fulgurlab React rewrite — execution plan
 
 **For the executing agent (Claude Sonnet 5).** This document is the single source of

@@ -1,3 +1,12 @@
+> **Note on this document.** It describes the simulation engine fulgurlab inherited
+> from CircuitJS1, and the algorithm description is still accurate: the TypeScript
+> port is a faithful one. The implementation has moved, though. Where this text says
+> `SimulationManager.java`, `CircuitElm.java` or `<Foo>Elm.java`, read
+> `web/engine/src/core/engine.ts`, `web/engine/src/elements/base.ts` and
+> `web/engine/src/elements/*.ts` respectively; the element registry that was
+> `CirSim.createCe()` is `web/engine/src/core/factory.ts`. There is no Java in this
+> repository any more.
+
 ## Contents
 - Foreword
 - Internals

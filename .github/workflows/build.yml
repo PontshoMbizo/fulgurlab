@@ -7,46 +7,45 @@ on:
     branches: [ master, dev ]
 
 permissions:
-  contents: write
+  contents: read
 
+# fulgurlab is pure TypeScript/JavaScript -- the Java/GWT engine and its Gradle
+# build were removed, so there is no JDK step and no `gradlew compileGwt` /
+# `makeSite` here any more (which also retires the makeSite bug TODO.md P0-2 was
+# about: it never copied *.js, so a built site 404'd on the bridge client).
+#
+# Numerical parity with the old Java oracle is still checked: the golden-trace
+# gate replays fixtures recorded from it, committed under
+# web/engine/test/golden/fixtures, so nothing Java needs building to verify it.
 jobs:
-  js-tests:
+  test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-node@v4
-      with:
-        node-version: 22
-    - name: FulgurBridge unit tests
-      run: npm test
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
 
-  build:
-    runs-on: ubuntu-latest
+      - name: Install
+        run: npm --prefix web ci
 
-    steps:
-    - uses: actions/checkout@v4
+      - name: Typecheck (engine + app)
+        run: npm run typecheck
 
-    - name: Set up JDK 8
-      uses: actions/setup-java@v4
-      with:
-        java-version: '8'
-        distribution: 'temurin'
+      # Golden traces vs the recorded oracle, the Java-corpus sweep, and the
+      # dump-id coverage gate all live here.
+      - name: Engine tests
+        run: npm run test:engine
 
-    - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v4
+      # Includes the bridge integration suite, which replays recorded backend
+      # transcripts and therefore never skips.
+      - name: App tests
+        run: npm run test:app
 
-    - name: Build with Gradle
-      run: ./gradlew compileGwt --console verbose
+      - name: Lint
+        run: npm run lint
 
-    - name: Build site
-      run: ./gradlew makeSite --console verbose
-
-    - name: Deploy to 'build' branch
-      if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-      uses: peaceiris/actions-gh-pages@v4
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        publish_dir: ./site
-        publish_branch: build
-        force_orphan: true
-        commit_message: "chore: compile circuitjs engine [skip ci]"
+      - name: Production build
+        run: npm run build

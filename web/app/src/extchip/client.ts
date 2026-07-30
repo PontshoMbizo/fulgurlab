@@ -1,6 +1,6 @@
 // ExtChipRegistry — app-side client for fulgurlab's lockstep co-simulation
 // bridge (docs/bridge-protocol.md, proto v1). This is a faithful TypeScript
-// port of war/fulgur-bridge.js (the proven GWT-era client) onto the FROZEN
+// port of the GWT-era war/fulgur-bridge.js (since removed; see git history) onto the FROZEN
 // CONTRACT the concurrent UI drawer agent builds against: a class instance
 // (not a window global) with an engineStore-style subscribe()/getVersion()
 // pair so React can useSyncExternalStore against it, id-keyed chip records
@@ -71,7 +71,7 @@ interface ChipRecord {
 }
 
 // "rst:in,led[0]:out" -> [{name,dir}] or {error} -- byte-for-byte the same
-// grammar as war/fulgur-bridge.js's parsePinSpec()/ExtChipElm.java's
+// grammar as the removed war/fulgur-bridge.js's parsePinSpec()/ExtChipElm.java's
 // parsePinSpec() (name:in|out, comma-separated, no duplicate names, <= 32
 // pins). Blank entries between commas are skipped, same as both references.
 function parsePinSpec(spec: string): { pins: ExtChipPinInfo[] } | { error: string } {

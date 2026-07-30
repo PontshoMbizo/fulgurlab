@@ -1,75 +1,63 @@
-#GWT cache
-gwt-unitCache/
-war/circuitjs1/
-war/circuitjs1/circuits/
-war/e-*.html
-war/WEB-INF/
+# =========================
+# Node / TypeScript
+# =========================
+node_modules/
+dist/
+*.tsbuildinfo
+.next/
+out/
+coverage/
+*.tgz
 
-# GWT command line tools
-codeserver.log
-webserver.log
-build.xml
-circuitjs1.tar.gz
-
-# Editor configurations
+# =========================
+# Editors
+# =========================
 .vscode
-
-# Windows image file caches
-Thumbs.db
-ehthumbs.db
-
-# Folder config file
-Desktop.ini
-
-# Recycle Bin used on file shares
-$RECYCLE.BIN/
-
-# Windows Installer files
-*.cab
-*.msi
-*.msm
-*.msp
-
-# Windows shortcuts
-*.lnk
+.idea
 
 # =========================
-# Operating System Files
+# Legacy GWT/Java build output
 # =========================
-
-# OSX
-# =========================
-
-.DS_Store
-.AppleDouble
-.LSOverride
-
-# Thumbnails
-._*
-
-# Files that might appear on external disk
-.Spotlight-V100
-.Trashes
-
-# Directories potentially created on remote AFP share
-.AppleDB
-.AppleDesktop
-Network Trash Folder
-Temporary Items
-.apdisk
-
-# Gradle build output
-/build
+# The Java/GWT engine was removed (fulgurlab is pure TS/JS). These stay ignored
+# so a leftover local tree from before the removal -- in particular `site/`, the
+# compiled oracle the golden-trace recorder can still be pointed at with
+# `--site` -- never gets committed by accident.
 /site
+/build
+/bin
+/.gradle
+/gwt-unitCache
+/war
 
-# Other stuff
-/tests
+# =========================
+# Local circuit scratch dirs
+# =========================
 /circuits
 /client
 /offline
 /spice
 /tmp
-/.gradle
-*.tgz
 
-/.apt_generated/
+# =========================
+# Operating System Files
+# =========================
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msm
+*.msp
+*.lnk

@@ -6,10 +6,10 @@ canvas) and external HDL/firmware simulators: **fpgasim** (Verilog → iverilog/
 
 ```
 ┌────────────── browser ──────────────┐        ┌───────── backend (per sim) ─────────┐
-│ circuitjs canvas                    │        │ bridge server (Node, ws)            │
-│  └─ ExtChipElm (Java/GWT)           │  WS    │  └─ session ⇄ hardened container    │
-│      ⇅ sync JSNI call per timestep  │ ◄────► │      stdio line protocol            │
-│ FulgurBridge (JS client, war/)      │  JSON  │      (vvp harness / QEMU firmware)  │
+│ fulgurlab canvas (React)            │        │ bridge server (Node, ws)            │
+│  └─ ExtChipElm (web/engine)         │  WS    │  └─ session ⇄ hardened container    │
+│      ⇅ sync call per timestep       │ ◄────► │      stdio line protocol            │
+│ ExtChipRegistry (web/app/extchip)   │  JSON  │      (vvp harness / QEMU firmware)  │
 └─────────────────────────────────────┘        └─────────────────────────────────────┘
 ```
 

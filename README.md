@@ -1,258 +1,107 @@
 # fulgurlab
 
 <p align="center">
-  <img src="war/icon128.png" alt="fulgurlab logo" width="128" height="128">
+  <img src="web/app/public/icons/icon128.png" alt="fulgurlab logo" width="128" height="128">
   <br>
   <em>Unified electronics lab in the browser</em>
 </p>
 
-**fulgurlab** = the CircuitJS1 analog/digital circuit engine (below) as the base, plus
-two co-simulated extensions wired in over a lockstep WebSocket bridge
-([docs/bridge-protocol.md](docs/bridge-protocol.md)):
+**fulgurlab** is a browser circuit simulator: a TypeScript port of the CircuitJS1
+analog/digital engine, plus two co-simulated hardware extensions wired in over a
+lockstep WebSocket bridge ([docs/bridge-protocol.md](docs/bridge-protocol.md)):
 
 - **[fpgasim](https://github.com/PontshoMbizo/fpgasim)** — Tang Nano 9K FPGA: Verilog
   compiled and stepped by iverilog/vvp in a hardened sandbox (bridge on `:3100`)
 - **[mcusim](https://github.com/PontshoMbizo/mcusim)** — STM32F103 Blue Pill: bare-metal
   C under QEMU with semihosting-driven quantum exchange (bridge on `:3101`)
 
-Place an **External Chip** (Draw → Digital Chips → External Chip (fulgurlab), in the
-GWT app below — or **FPGA — Tang Nano 9K (fpgasim)** in the React app's palette) on the
-canvas, give it a bridge URL, pin spec and source; its pins become live circuit nodes
-advanced in lockstep with the external simulator. `npm test` runs the bridge-client
-unit tests; `npm run test:integration` drives the real backends from sibling checkouts.
+Place an **FPGA — Tang Nano 9K (fpgasim)** chip from the palette, give it a bridge URL,
+pin spec and source; its pins become live circuit nodes advanced in lockstep with the
+external simulator. Placing it renders the actual Tang Nano 9K board photo (pins in the
+same two header rows as the real part), and its default Verilog + pin spec match
+fpgasim's own standalone demo (`clk`/`btn1`/`btn2`/`leds[5:0]`) so the two feel like the
+same board.
 
-## React rewrite (`web/`) — actively developed
+## 100% TypeScript / JavaScript
 
-`web/` is a from-scratch TypeScript/React port of the circuit engine and UI (npm
-workspaces: `web/engine` the headless simulation core, `web/app` the Next.js canvas
-app), replacing the GWT/Java build below once it reaches parity — see
-[docs/react-rewrite-plan.md](docs/react-rewrite-plan.md) for scope and status. The
-lockstep bridge/ExtChip integration is fully wired up here: placing the FPGA chip
-renders the actual Tang Nano 9K board photo (pins arranged in the same two header rows
-as the real part), and its default Verilog + pin spec match fpgasim's own standalone
-demo (`clk`/`btn1`/`btn2`/`leds[5:0]`) so the two feel like the same board.
+This repository contains **no Java and no JVM build**. It began as a fork of the
+GWT/Java CircuitJS1 and kept that engine as an oracle while the TypeScript port was
+written against it; the port now covers every element type the Java source could
+serialize, and the Java tree, its Gradle build, the GWT host page and the Electron
+wrapper have all been removed.
+
+Numerical parity with the original is still enforced, without needing anything Java:
+`web/engine/test/golden/fixtures` holds traces **recorded from the real GWT build**, and
+the test suite replays them against the TypeScript engine every run
+(12 circuits / 26 probes / 7,300 compared values). To re-record or extend them, point
+the recorder at any compiled circuitjs1 site:
 
 ```bash
-cd web
-npm install
-npm -w app run dev      # canvas app at http://localhost:3000
-npm -w engine run test  # engine unit + golden + corpus-compat suites
-npm -w app run test     # app unit suites (incl. bridge client)
-npm -w app run build    # production build / type-check
+node tools/golden-recorder/record.mjs --site /path/to/circuitjs1/site
 ```
+
+## Layout
+
+```
+web/engine/      headless simulation core (TypeScript, no DOM)
+web/app/         Next.js canvas app
+tests/           circuit corpus inherited from circuitjs1, used by the engine's
+auto-tests/        compatibility sweep (every file must parse, analyze and round-trip)
+tools/golden-recorder/   records golden traces from a compiled circuitjs1 oracle
+integration-tests/       cross-repo bridge tests + transcript recorder
+docs/            bridge protocol, rewrite plan
+INTERNALS.md     how the solver works (MNA, stamping, the element contract)
+```
+
+## Quick start
+
+```bash
+npm --prefix web install   # installs both workspaces
+
+npm run dev                # canvas app at http://localhost:3000
+npm test                   # engine + app suites (333 tests)
+npm run typecheck          # tsc --noEmit for both workspaces
+npm run build              # production build
+```
+
+Every script also works from inside a workspace (`npm --prefix web/engine run test`).
+
+### Test suites
+
+| Command | What it covers |
+|---|---|
+| `npm run test:engine` | element/solver units, dump round-trips, the **golden-trace gate** vs the recorded Java oracle, the Java-corpus sweep (37 files, 0 unsupported dump ids), and a coverage gate asserting every Java dump id is implemented |
+| `npm run test:app` | store (undo/redo, import/export, selection, transactions), canvas geometry, inspector schema, scope persistence, palette parity, and the **bridge integration suite** (replays recorded backend transcripts — never skips) |
+| `npm run test:integration` | the real cross-repo chain against live fpgasim/mcusim from sibling checkouts; skips when their toolchains are absent |
+
+### Deploying
+
+`next build` prerenders the app as static content, so there is no server requirement:
+
+```bash
+NEXT_OUTPUT_EXPORT=1 npm run build   # emits web/app/out/, servable by any static host
+```
+
+The GitHub Pages workflow does exactly this.
 
 ---
 
-# CircuitJS1 (engine)
-
-## Introduction
-
-CircuitJS1 is an electronic circuit simulator that runs in the browser. It was originally written by Paul Falstad as a Java Applet. It was adapted by Iain Sharp to run in the browser using GWT.
-
-For a hosted version of the application see:
-
-* Paul's Page: [http://www.falstad.com/circuit/](http://www.falstad.com/circuit/)
-* Iain's Page: [http://lushprojects.com/circuitjs/](http://lushprojects.com/circuitjs/)
-
-Thanks to: Edward Calver for 15 new components and other improvements; Rodrigo Hausen for file import/export and many other UI improvements; J. Mike Rollins for the Zener diode code; Julius Schmidt for the spark gap code and some examples; Dustin Soodak for help with the user interface improvements; Jacob Calvert for the T Flip Flop; Ben Hayden for scope spectrum; Thomas Reitinger, Krystian Sławiński, Usevalad Khatkevich, Lucio Sciamanna, Mauro Hemerly Gazzani, J. Miguel Silva, and Franck Viard for translations; Andre Adrian for improved emitter coupled oscillator; Felthry for many examples; Colin Howell for code improvements. LZString (c) 2013 pieroxy.
-
-## Building the web application
-
-The web application can be compiled and run locally using Eclipse, or in a cloud development container like Github Codespaces or gitpod.io. Both of these services provide a number of free usage hours every month. You can also use the cloud tools from `./dev.sh` on your local Linux machine or in a local docker container.
-
-### Development using Eclipse
-
-The tools you will need to build the project are:
-
-* Eclipse, Oxygen version.
-* GWT plugin for Eclipse.
-
-Install "Eclipse for Java developers" from [here](https://www.eclipse.org/downloads/packages/). To add the GWT plugin for Eclipse follow the instructions [here](https://gwt-plugins.github.io/documentation/gwt-eclipse-plugin/Download.html).
-
-This repository is a project folder for your Eclipse project space. Once you have a local copy you can then build and run in development mode or build for deployment. Running in super development mode is done by clicking on the "run" icon on the toolbar and choosing http://127.0.0.1:8888/circuitjs.html from the "Development Mode" tab which appears. Building for deployment is done by selecting the project root node and using the GWT button on the Eclipse taskbar and choosing "GWT Compile Project...".
-
-GWT will build its output in to the "war" directory. In the "war" directory the file "iframe.html" is loaded as an iFrame in to the spare space at the bottom of the right hand pannel. It can be used for branding etc.
-
-### Development using cloud containers
-
-1. Install [Visual Studio Code](https://code.visualstudio.com/) and the appropriate remote extension: either [Gitpod Extension](https://marketplace.visualstudio.com/items?itemName=gitpod.gitpod-desktop) or [Codespaces Extension](https://marketplace.visualstudio.com/items?itemName=GitHub.codespaces).
-2. Open your fork of the `circuitjs1` repository in your chosen provider's dev container.
-3. This should open a new tab in your browser showing VS Code. Click in the green button in the bottom left corner, then select "Open in VS Code Desktop" in the popup menu that opened. Click "Allow" in all URL popups and authenticate using github if asked.
-
-Once you have successfully connected your local VS Code to the remote workspace, you should be able to see the content of the remote container in your local VS Code. You can now continue with the setup:
-
-4. Open a shell inside the dev container by pressing `Ctrl+Backtick` or pressing `F1` and typing "Create new Terminal".
-5. Make sure you are in the folder `/workspaces/circuitjs1` inside the container (necessary only once per newly created container).
-6. Run `./dev.sh setup` to install all development dependencies, including GWT and Java.
-7. Run `./dev.sh start` to start the web server and the GWT code server. This will start two services: http://localhost:8000 and http://localhost:9876.
-8. Make sure both port and 8000 and 9876 are forwarded in the "Ports" tab (next to "Terminal").
-9. If you edit a Java file in VS Code and reload http://localhost:8000, it should recompile the file automatically. It will then load the compiled JavaScript and the corresponding source map from the code server running on http://localhost:9876. You should be able to see the your changes in the web application.
-
-> ***Note:*** When running the web application server inside a remote dev container, port forwarding is necessary in order to access the remote server from your own computer. This port forwarding is provided by Visual Studio Code running on your local computer.
->
-> Theoretically, it would be possible to use the browser-based VS Code interface. However, both Gitpod and Codespaces map forwarded ports to different domain names instead of different ports, which confuses the GWT code loader. It is possible to fix this by live-patching the `serverUrl` variable in `circuitjs1.nocache.js` using a custom HTTP server, but it also requires setting the port visibility to "Public" to avoid CORS errors due to redirects. Using a local installation of VS Code is much simpler.
-
-### Development using Gradle
-
-To build the application using gradle, do the following:
-
-```bash
-# 1. Run Gradle build with verbose output:
-gradle compileGwt --console verbose --info
-# 2. Create the web-site directory from the build files:
-gradle makeSite --console verbose --info
-```
-
-Now, just open `site/circuitjs.html` with your browser and enjoy!
-
-You can do the same thing inside GitHub Codespaces.  Then after creating the site directory, you can create a web server using:
-
-```bash
-cd site
-python3 -m http.server
-```
-
-Then go to the Ports tab, hover over the "Forwarded Address" and click "Follow Link".  Then click `circuitjs.html` to view the application.
-
-### Quick local test
-
-The included `test.sh` script compiles, builds the site, and starts a local server in one step:
-
-```bash
-./test.sh          # builds and serves on port 8000
-./test.sh 9000     # use a custom port
-```
-
-This opens `http://localhost:8000/circuitjs.html` in your browser automatically (macOS). The script finds Gradle via the wrapper (`./gradlew`), the system PATH, or `/tmp/gradle-8.7/`. Requires Python 3 for the HTTP server.
-
-> **Note:** Gradle 8.7 is required (GWT plugin is incompatible with Gradle 9.x). If you don't have it installed, you can download it with:
-> ```bash
-> curl -sL https://services.gradle.org/distributions/gradle-8.7-bin.zip -o /tmp/g.zip && unzip -qo /tmp/g.zip -d /tmp
-> ```
-
-## Deployment of the web application
-
-* "GWT Compile Project..." as explained above or run `./dev.sh compile`. This will put the outputs in to the "war" directory in the Eclipse project folder. You then need to copy everything in the "war" directory, except the "WEB-INF" directory, on to your web server.
-* Customize the header of the file "circuitjs1.html" to include your tracking, favicon etc.
-* Customize the "iframe.html" file to include any branding you want in the right hand panel of the application
-* The optional file "shortrelay.php" is a server-side script to act as a relay to a URL shortening service to avoid cross-origin problems with a purely client solution. You may want to customize this for your site. If you don't want to use this feature edit the circuitjs1.java file before compiling.
-* If you wish to enable dropbox loading and saving a dropbox API app-key is needed. This should be edited in to the circuitjs.html file where needed. If this is not included the relevant features will be disabled.
-
-
-The link for the full-page version of the application is now:
-`http://<your host>/<your path>/circuitjs1.html`
-(you can rename the "circuitjs1.html" file if you want too though you should also update "shortrelay.php" if you do).
-
-Just for reference the files should look like this
-
-```
--+ Directory containing the front page (eg "circuitjs")
-  +- circuitjs.html - full page version of application
-  +- iframe.html - see notes above
-  +- shortrelay.php - see notes above
-  ++ circuitjs1 (directory)
-   +- various files built by GWT
-   +- circuits (directory, containing example circuits)
-   +- setuplist.txt (index in to example circuit directory)
-```
-
-## Docker/podman containers
-
-### Building and Running Circuitjs in docker containers
-
-*(replace the podman command with docker if you prefere docker)*
-
-- To build Docker image using podman: 
-
-```
-podman build -f circuitjs1.Containerfile -t circuitjs1:latest
-```
-
-- To then run Docker image using podman:
-
-```
-podman run --name=circuitjs1 --rm -d -p 8000:8000 circuitjs1:latest
-```
-
-CircuitJS1 should be accessable at: http://localhost:8000/circuitjs.html
-
-
-### Development using docker containers
-
-(replace the podman command with docker if you prefere docker)
-
-- To build the development Docker image using podman: 
-
-```
-podman build -f dev-start.Containerfile -t circuitjs1-dev:latest
-```
-
-- To then run the development Docker image using podman:
-
-```
-podman run --rm -it -p 127.0.0.1:8000:8000/tcp -p 127.0.0.1:9876:9876/tcp circuitjs1-dev:latest
-```
-
-CircuitJS1 should be accessable at: http://localhost:8000/circuitjs.html
-
-If you need to modify the files while the container is running (using the gwt auto-build method):
-
-```
-podman run --rm -it -v $(pwd):/src:Z  -p 127.0.0.1:8000:8000/tcp -p 127.0.0.1:9876:9876/tcp  circuitjs1-dev:latest
-```
-
-This will use the current directory inside the container.
-
-
-
-## Embedding
-
-You can link to the full page version of the application using the link shown above.
-
-If you want to embed the application in another page then use an iframe with the src being the full-page version.
-
-You can add query parameters to link to change the applications startup behaviour. The following are supported:
-```
-.../circuitjs.html?cct=<string> // Load the circuit from the URL (like the # in the Java version)
-.../circuitjs.html?ctz=<string> // Load the circuit from compressed data in the URL
-.../circuitjs.html?startCircuit=<filename> // Loads the circuit named "filename" from the "Circuits" directory
-.../circuitjs.html?startCircuitLink=<URL> // Loads the circuit from the specified URL. CURRENTLY THE URL MUST BE A DROPBOX SHARED FILE OR ANOTHER URL THAT SUPPORTS CORS ACCESS FROM THE CLIENT
-.../circuitjs.html?euroResistors=true // Set to true to force "Euro" style resistors. If not specified the resistor style will be based on the user's browser's language preferences
-.../circuitjs.html?IECGates=true // Set to true to force IEC logic gates. If not specified the gate style will be based on the user's browser's language preferences
-.../circuitjs.html?usResistors=true // Set to true to force "US" style resistors. If not specified the resistor style will be based on the user's browser's language preferences
-.../circuitjs.html?whiteBackground=<true|false>
-.../circuitjs.html?conventionalCurrent=<true|false>
-.../circuitjs.html?running=<true|false> // Start the app without the simulation running, default true
-.../circuitjs.html?hideSidebar=<true|false> // Hide the sidebar, default false
-.../circuitjs.html?hideMenu=<true|false> // Hide the menu, default false
-.../circuitjs.html?editable=<true|false> // Allow circuit editing, default true
-.../circuitjs.html?positiveColor=%2300ff00 // change positive voltage color (rrggbb)
-.../circuitjs.html?negativeColor=%23ff0000 // change negative voltage color
-.../circuitjs.html?selectColor=%2300ffff // change selection color
-.../circuitjs.html?currentColor=%23ffff00 // change current color
-.../circuitjs.html?mouseWheelEdit=<true|false> // allow changing of values by mouse wheel
-.../circuitjs.html?mouseMode=<item> // set the initial mouse mode.  can also initially perform other UI actions, such as opening the 'about' menu, running 'importfromlocalfile', etc.
-.../circuitjs.html?hideInfoBox=<true|false>
-```
-The simulator can also interface with your javascript code.  See [war/jsinterface.html](http://www.falstad.com/circuit/jsinterface.html) for an example.
-
-## Building an Electron application
-
-The [Electron](https://electronjs.org/) project allows web applications to be distributed as local executables for a variety of platforms. This repository contains the additional files needed to build circuitJS1 as an Electron application.
-
-The general approach to building an Electron application for a particular platform is documented [here](https://electronjs.org/docs/tutorial/application-distribution). The following instructions apply this approach to circuit JS.
-
-To build the Electron application:
-* Compile the application using GWT, as above.
-* Download and unpack a [pre-built Electron binary directory](https://github.com/electron/electron/releases) version 9.3.2 for the target platform.
-* Copy the "app" directory from this repository to the location specified [here](https://electronjs.org/docs/tutorial/application-distribution) in the Electron binary directory structure.
-* Copy the "war" directory, containing the compiled CircuitJS1 application, in to the "app" directory the Electron binary directory structure.
-* Run the "Electron" executable file. It should automatically load CircuitJS1.
-
-Known limitations of the Electron application:
-* "Create short URL" on "Export as URL" doesn't work as it relies on server support.
-
-Thanks to @Immortalin for the initial work in applying Electron to CircuitJS1.
+## Credits
+
+The simulation engine is a port of **CircuitJS1**, originally written by Paul Falstad as
+a Java applet and adapted by Iain Sharp to run in the browser with GWT.
+
+* Paul's page: [http://www.falstad.com/circuit/](http://www.falstad.com/circuit/)
+* Iain's page: [http://lushprojects.com/circuitjs/](http://lushprojects.com/circuitjs/)
+
+Thanks to: Edward Calver for 15 new components and other improvements; Rodrigo Hausen
+for file import/export and many other UI improvements; J. Mike Rollins for the Zener
+diode code; Julius Schmidt for the spark gap code and some examples; Dustin Soodak for
+help with the user interface improvements; Jacob Calvert for the T Flip Flop; Ben Hayden
+for scope spectrum; Thomas Reitinger, Krystian Sławiński, Usevalad Khatkevich, Lucio
+Sciamanna, Mauro Hemerly Gazzani, J. Miguel Silva, and Franck Viard for translations;
+Andre Adrian for improved emitter coupled oscillator; Felthry for many examples; Colin
+Howell for code improvements. LZString (c) 2013 pieroxy.
 
 ## License
 
@@ -269,4 +118,3 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
-(:

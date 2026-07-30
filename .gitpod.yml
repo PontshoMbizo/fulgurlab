@@ -1,4 +1,0 @@
-tasks:
-  - name: Setup Dev Environment
-    init: ./dev.sh setup
-    command: ./dev.sh start
