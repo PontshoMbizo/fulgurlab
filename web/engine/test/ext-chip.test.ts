@@ -43,6 +43,32 @@ describe('ExtChipElm registration + dump round-trip', () => {
         expect(reloaded.source).toContain(' ');
     });
 
+    it('round-trips the clockHz/targetId tokens added after the Java original', () => {
+        const elm = new ExtChipElm(0, 0, 100, 0, 0, [
+            'ws://localhost:3101', 'a:in', '250000', 'mainline', 'src', '48000000', 'bluepill',
+        ]);
+        expect(elm.clockHz).toBe(48_000_000);
+        expect(elm.targetId).toBe('bluepill');
+
+        const reloaded = new ExtChipElm(0, 0, 100, 0, 0, elm.dumpTokens().map(String));
+        expect(reloaded.clockHz).toBe(48_000_000);
+        expect(reloaded.targetId).toBe('bluepill');
+        // The whole-line path matters too: `source` is no longer the last
+        // token, so anything that let whitespace survive escaping would now
+        // desync tokens 6-7 rather than merely mangling the tail.
+        const tokens = elm.dump().trim().split(/\s+/);
+        const viaLine = createElement('460', 0, 0, 100, 0, 0, tokens.slice(6)) as ExtChipElm;
+        expect(viaLine.clockHz).toBe(48_000_000);
+        expect(viaLine.targetId).toBe('bluepill');
+    });
+
+    it('a pre-editor 5-token dump line still loads, picking up new defaults', () => {
+        const legacy = new ExtChipElm(0, 0, 100, 0, 0, ['ws://x', 'a:in', '1000000', '', 'src']);
+        expect(legacy.clockHz).toBe(ExtChipElm.DEFAULT_CLOCK_HZ);
+        expect(legacy.targetId).toBe('');
+        expect(legacy.pinSpec).toBe('a:in');
+    });
+
     it('tolerates missing trailing tokens (no source token at all)', () => {
         const elm = new ExtChipElm(0, 0, 100, 0, 0, ['ws://x', 'a:in,b:out', '5000']);
         expect(elm.engineName).toBe('');

@@ -123,11 +123,26 @@ export class ExtChipElm extends CircuitElm {
     // Lead-stub length from the board's north/south edge to the actual post.
     static LEAD = 80;
 
+    // Board clock the backend should synthesize, in Hz. fulgurlab's addition
+    // to proto v1's `create.config` (docs/bridge-protocol.md) -- optional and
+    // ignorable, so a backend that predates it just runs its own default.
+    // This is THE performance lever for co-simulation: fpgasim's harness
+    // otherwise hardcodes the real Tang Nano's 27 MHz, and a 1 ms quantum at
+    // 27 MHz is 54,000 clock-edge events for vvp to chew through before the
+    // design does any work of its own. 0 means "backend's choice".
+    static DEFAULT_CLOCK_HZ = 1_000_000;
+
     bridgeUrl: string;
     pinSpec: string;
     quantumNs: number;
     engineName: string;
     source: string;
+    clockHz: number;
+    // Which entry in the app's extchip/targets.ts this chip was placed from
+    // (board art, Monaco language, default source, wiring notes). Purely an
+    // app-layer key -- the engine never interprets it, it just has to survive
+    // a dump/load round trip like every other config field.
+    targetId: string;
 
     // Plain public fields the app's store glues to the ws client -- see
     // this class's own header comment for the exact per-step call order.
@@ -171,6 +186,11 @@ export class ExtChipElm extends CircuitElm {
         this.quantumNs = p.length > 2 ? (parseFloat(p[2]) || ExtChipElm.DEFAULT_QUANTUM_NS) : ExtChipElm.DEFAULT_QUANTUM_NS;
         this.engineName = p.length > 3 ? unescapeToken(p[3]) : '';
         this.source = p.length > 4 ? unescapeToken(p[4]) : '';
+        // Tokens 6-7 postdate the original Java element. Same positional
+        // fallback rule as `source` above, so a GWT-era or pre-editor 5-token
+        // "460" line still loads and simply picks up today's defaults.
+        this.clockHz = p.length > 5 ? (parseFloat(p[5]) || ExtChipElm.DEFAULT_CLOCK_HZ) : ExtChipElm.DEFAULT_CLOCK_HZ;
+        this.targetId = p.length > 6 ? unescapeToken(p[6]) : '';
         this.derivePins();
     }
 
@@ -188,6 +208,8 @@ export class ExtChipElm extends CircuitElm {
             this.quantumNs,
             escapeToken(this.engineName),
             escapeToken(this.source),
+            this.clockHz,
+            escapeToken(this.targetId),
         ];
     }
 

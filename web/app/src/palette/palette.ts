@@ -14,6 +14,7 @@
 // An `alias` records the Java class name a preset stands for, so the parity
 // test (palette.test.ts) can check this file against the menu tree by name
 // rather than by label.
+import { TARGETS } from "@/extchip/targets";
 export interface PaletteItem {
     dumpType: string;
     label: string;
@@ -37,6 +38,28 @@ export const CAT_LOGIC = "Logic Gates, Input and Output";
 export const CAT_CHIPS = "Digital Chips";
 export const CAT_ACHIPS = "Analog and Hybrid Chips";
 export const CAT_COSIM = "Co-simulated";
+
+// Co-simulated boards are derived from extchip/targets.ts rather than
+// transcribed, so adding a target cannot leave the palette behind. Token
+// order is ExtChipElm's own dump order:
+//   url  pinSpec  quantumNs  engine  source  clockHz  targetId
+const COSIM_ITEMS: PaletteItem[] = TARGETS.map((t) => ({
+    dumpType: "460",
+    label: `${t.label} (${t.backend})`,
+    category: CAT_COSIM,
+    flags: 0,
+    tokens: [
+        t.defaultUrl,
+        t.defaultPinSpec,
+        String(t.defaultQuantumNs),
+        t.engineName === "" ? "\\0" : t.engineName,
+        "\\0",
+        String(t.defaultClockHz),
+        t.id,
+    ],
+    alias: "ExtChipElm",
+}));
+
 
 export const PALETTE: PaletteItem[] = [
     // ---------------------------------------------------------------- Basic
@@ -211,10 +234,22 @@ export const PALETTE: PaletteItem[] = [
     { dumpType: "194", label: "Monostable", category: CAT_ACHIPS, flags: 0, tokens: ["false", "0.01"], alias: "MonostableElm" },
 
     // ----------------------------------------------------- Co-simulated
-    // fulgurlab's own addition (docs/bridge-protocol.md). Tokens empty: the
-    // element's own defaults apply (ws://localhost:3100, 1ms quantum) and the
-    // drawer prefills the blinky Verilog preset on first open.
-    { dumpType: "460", label: "FPGA — Tang Nano 9K (fpgasim)", category: CAT_COSIM, flags: 0, tokens: [], alias: "ExtChipElm" },
+    // fulgurlab's own addition (docs/bridge-protocol.md), one entry per
+    // extchip/targets.ts descriptor.
+    //
+    // These MUST carry a real pin spec. With `tokens: []` the element's
+    // pinSpec defaulted to "" and getPostCount() returned 0, so a freshly
+    // placed board had no posts at all -- nothing to wire to until the user
+    // found the config panel and hit Apply. The spec here is a starting
+    // point only; the first successful compile replaces it with the
+    // backend's authoritative `created.pins` (engineStore.setExtChipPins).
+    //
+    // No escaping needed on any of these: escapeDumpText only rewrites
+    // \ \n space + = # & \r, and none of ":" "," "[" "]" "/" is in that set.
+    // `source` is the "\0" empty-string sentinel so the editor pane
+    // substitutes the target's own default on first open rather than
+    // duplicating a whole Verilog/C listing into this table.
+    ...COSIM_ITEMS,
 ];
 
 export const CATEGORIES: string[] = [

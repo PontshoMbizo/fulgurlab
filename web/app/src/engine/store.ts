@@ -2,7 +2,7 @@
 
 import { CircuitEngine, CircuitElm, CircuitParser, createElement } from "@fulgurlab/engine";
 import { extChipRegistry } from "@/extchip/client";
-import { extChipId } from "@/extchip/ExtChipDrawer";
+import { extChipId } from "@/extchip/ids";
 
 // Bounded so a very long editing session can't grow this without limit --
 // 100 steps is generous for a circuit editor (Falstad's own app has no

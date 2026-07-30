@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { createElement } from "@fulgurlab/engine/src/core/factory";
 import { undumpCompositeModel } from "@fulgurlab/engine/src/elements/composite";
-import { PALETTE, CATEGORIES, EXCLUDED_FROM_PALETTE, type PaletteItem } from "./palette";
+import { PALETTE, CATEGORIES, EXCLUDED_FROM_PALETTE, CAT_COSIM, type PaletteItem } from "./palette";
 
 // PALETTE PARITY (TODO.md P1-2): the palette listed 61 entries against the Java
 // draw menu's 143. These tests pin the two together by Java CLASS NAME (the
@@ -93,11 +93,40 @@ describe("palette parity with Menus.java's draw menu", () => {
     });
 
     it("has no duplicate aliases and every entry declares one", () => {
+        // The rule is scoped to the section transcribed from Menus.java, where
+        // it catches copy-paste slips: there, two entries of the same class are
+        // always distinct Java getDumpClass() subclasses (RailElm/ACRailElm,
+        // NMosfetElm/PMosfetElm) and so always have distinct aliases.
+        //
+        // CAT_COSIM is fulgurlab's own category, not transcribed from anything.
+        // Java had exactly one ExtChipElm; we offer one preset per co-simulation
+        // target (extchip/targets.ts), all of the same class and distinguished
+        // only by tokens -- which "presets that share a dump id produce
+        // distinguishable elements" below is the test that actually guards.
+        // Uniqueness here would force a fake alias per board for no benefit:
+        // the alias's real job is the JAVA_DRAW_MENU coverage check, which
+        // duplicates cannot weaken.
         const seen = new Set<string>();
         for (const p of PALETTE) {
             expect(p.alias, `entry "${p.label}" has no alias`).toBeTruthy();
+            if (p.category === CAT_COSIM) continue;
             expect(seen.has(p.alias!), `duplicate alias ${p.alias}`).toBe(false);
             seen.add(p.alias!);
+        }
+    });
+
+    // REGRESSION: the single co-sim entry used to carry `tokens: []`, so the
+    // element's pinSpec defaulted to "" and getPostCount() returned 0. The
+    // board landed on the canvas as an inert picture with no posts -- nothing
+    // to wire to until the user found the config panel and hit Apply. The
+    // "every entry constructs" test above passed the whole time, because a
+    // zero-post element constructs perfectly well.
+    it("co-simulated boards are placed with real, wireable posts", () => {
+        const cosim = PALETTE.filter((p) => p.category === CAT_COSIM);
+        expect(cosim.length).toBeGreaterThanOrEqual(2);
+        for (const p of cosim) {
+            const elm = createElement(p.dumpType, 0, 0, 64, 0, p.flags, p.tokens)!;
+            expect(elm.getPostCount(), `${p.label} placed with no posts`).toBeGreaterThan(0);
         }
     });
 

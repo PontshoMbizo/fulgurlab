@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import type { CircuitElm } from "@fulgurlab/engine";
 import type { ExtChipElm } from "@fulgurlab/engine";
 import { engineStore } from "@/engine/store";
+import { extChipId } from "@/extchip/ids";
 import { extChipRegistry } from "./client";
 import type { ExtChipStatus } from "./client";
 import { DEFAULT_FPGA_CONFIG, DEFAULT_FPGA_SOURCE, TANG_NANO_9K_PIN_SPEC } from "./preset";
@@ -21,29 +22,6 @@ import { DEFAULT_FPGA_CONFIG, DEFAULT_FPGA_SOURCE, TANG_NANO_9K_PIN_SPEC } from 
 // bundle out of every route's initial chunk -- it only loads the first time
 // this drawer actually mounts an elm.
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
-
-// --- Chip identity -----------------------------------------------------
-//
-// The engine element (ExtChipElm) has no id field of its own -- CircuitElm
-// identity is just "the same JS object reference" (see engineStore's own
-// comments on why scope channels/selection hold direct elm references
-// rather than indices). The ws registry (client.ts) is keyed by a plain
-// number, so this module owns the one WeakMap<CircuitElm, number> + counter
-// that hands out a stable id per placed element, lazily on first lookup.
-// Exported so the lead agent's store/canvas glue (and ExtChipBody.tsx, this
-// panel's sibling body-drawing module) can look up the SAME id for the SAME
-// element without either side needing to invent its own id scheme.
-let nextExtChipId = 1;
-const extChipIds = new WeakMap<CircuitElm, number>();
-
-export function extChipId(elm: CircuitElm): number {
-    let id = extChipIds.get(elm);
-    if (id === undefined) {
-        id = nextExtChipId++;
-        extChipIds.set(elm, id);
-    }
-    return id;
-}
 
 interface Props {
     elm: CircuitElm | null;

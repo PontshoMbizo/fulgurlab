@@ -1,6 +1,6 @@
 import type { CircuitElm } from "@fulgurlab/engine";
 import { extChipRegistry } from "@/extchip/client";
-import { extChipId } from "@/extchip/ExtChipDrawer";
+import { extChipId } from "@/extchip/ids";
 import type { ExtChipStatus } from "@/extchip/client";
 
 // Body for ExtChipElm (dump type 460 -- engine/src/elements/ext_chip.ts, the
