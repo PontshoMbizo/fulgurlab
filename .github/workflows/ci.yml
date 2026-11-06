@@ -1,0 +1,22 @@
+name: ci
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install Scilab (headless)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends scilab-cli scilab-full-bin
+      - name: Server tests (validation + real Scilab simulations)
+        run: npm test
+        env:
+          REQUIRE_SCILAB: "1"
+      - name: Editor typecheck and build
+        run: npm --prefix web ci && npm run build

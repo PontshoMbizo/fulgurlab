@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "name": "Sine, gain and integrator",
+  "description": "A sine wave, the sine through a gain of 2, and its integral (1 - cos t) on one scope.",
+  "settings": {
+    "tf": 10,
+    "dt": 0.01
+  },
+  "blocks": [
+    {
+      "id": "sine",
+      "type": "sine",
+      "params": {
+        "amplitude": 1,
+        "frequency": 1,
+        "phase": 0
+      },
+      "x": 40,
+      "y": 160,
+      "name": "Sine"
+    },
+    {
+      "id": "gain",
+      "type": "gain",
+      "params": {
+        "k": 2
+      },
+      "x": 260,
+      "y": 80,
+      "name": "Gain"
+    },
+    {
+      "id": "int",
+      "type": "integrator",
+      "params": {
+        "x0": 0
+      },
+      "x": 260,
+      "y": 240,
+      "name": "Integral"
+    },
+    {
+      "id": "scope",
+      "type": "scope",
+      "params": {
+        "inputs": 3
+      },
+      "x": 480,
+      "y": 140,
+      "name": "Signals"
+    }
+  ],
+  "links": [
+    {
+      "from": {
+        "block": "sine",
+        "port": 0
+      },
+      "to": {
+        "block": "scope",
+        "port": 0
+      }
+    },
+    {
+      "from": {
+        "block": "sine",
+        "port": 0
+      },
+      "to": {
+        "block": "gain",
+        "port": 0
+      }
+    },
+    {
+      "from": {
+        "block": "sine",
+        "port": 0
+      },
+      "to": {
+        "block": "int",
+        "port": 0
+      }
+    },
+    {
+      "from": {
+        "block": "gain",
+        "port": 0
+      },
+      "to": {
+        "block": "scope",
+        "port": 1
+      }
+    },
+    {
+      "from": {
+        "block": "int",
+        "port": 0
+      },
+      "to": {
+        "block": "scope",
+        "port": 2
+      }
+    }
+  ]
+}

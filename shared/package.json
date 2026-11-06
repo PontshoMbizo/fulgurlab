@@ -1,0 +1,7 @@
+{
+  "name": "@fulgurlab/shared",
+  "private": true,
+  "type": "module",
+  "main": "catalog.js",
+  "types": "catalog.d.ts"
+}

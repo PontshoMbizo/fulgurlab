@@ -1,0 +1,106 @@
+{
+  "version": 1,
+  "name": "Sampling and delay",
+  "description": "A ramp, its zero-order hold at Ts = 0.5 s, and a unit delay of the held signal.",
+  "settings": {
+    "tf": 4,
+    "dt": 0.01
+  },
+  "blocks": [
+    {
+      "id": "ramp",
+      "type": "ramp",
+      "params": {
+        "slope": 1,
+        "start": 0,
+        "initial": 0
+      },
+      "x": 40,
+      "y": 140,
+      "name": "Ramp"
+    },
+    {
+      "id": "zoh",
+      "type": "zoh",
+      "params": {
+        "ts": 0.5
+      },
+      "x": 240,
+      "y": 140,
+      "name": "Hold"
+    },
+    {
+      "id": "z1",
+      "type": "unitDelay",
+      "params": {
+        "ts": 0.5,
+        "x0": 0
+      },
+      "x": 420,
+      "y": 220,
+      "name": "Delayed"
+    },
+    {
+      "id": "scope",
+      "type": "scope",
+      "params": {
+        "inputs": 3
+      },
+      "x": 620,
+      "y": 120,
+      "name": "Samples"
+    }
+  ],
+  "links": [
+    {
+      "from": {
+        "block": "ramp",
+        "port": 0
+      },
+      "to": {
+        "block": "zoh",
+        "port": 0
+      }
+    },
+    {
+      "from": {
+        "block": "ramp",
+        "port": 0
+      },
+      "to": {
+        "block": "scope",
+        "port": 0
+      }
+    },
+    {
+      "from": {
+        "block": "zoh",
+        "port": 0
+      },
+      "to": {
+        "block": "scope",
+        "port": 1
+      }
+    },
+    {
+      "from": {
+        "block": "zoh",
+        "port": 0
+      },
+      "to": {
+        "block": "z1",
+        "port": 0
+      }
+    },
+    {
+      "from": {
+        "block": "z1",
+        "port": 0
+      },
+      "to": {
+        "block": "scope",
+        "port": 2
+      }
+    }
+  ]
+}

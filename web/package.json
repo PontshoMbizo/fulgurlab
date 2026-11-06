@@ -1,9 +1,25 @@
 {
-  "name": "fulgurlab-workspace",
-  "version": "1.0.0",
+  "name": "@fulgurlab/web",
+  "version": "0.1.0",
   "private": true,
-  "workspaces": [
-    "engine",
-    "app"
-  ]
+  "type": "module",
+  "description": "Browser block-diagram editor (Simulink-style) for fulgurlab",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fontsource/ibm-plex-sans": "^5.1.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.0"
+  }
 }

@@ -1,63 +1,8 @@
-# =========================
-# Node / TypeScript
-# =========================
 node_modules/
-dist/
-*.tsbuildinfo
-.next/
-out/
-coverage/
-*.tgz
-
-# =========================
-# Editors
-# =========================
-.vscode
-.idea
-
-# =========================
-# Legacy GWT/Java build output
-# =========================
-# The Java/GWT engine was removed (fulgurlab is pure TS/JS). These stay ignored
-# so a leftover local tree from before the removal -- in particular `site/`, the
-# compiled oracle the golden-trace recorder can still be pointed at with
-# `--site` -- never gets committed by accident.
-/site
-/build
-/bin
-/.gradle
-/gwt-unitCache
-/war
-
-# =========================
-# Local circuit scratch dirs
-# =========================
-/circuits
-/client
-/offline
-/spice
-/tmp
-
-# =========================
-# Operating System Files
-# =========================
+web/dist/
+*.log
 .DS_Store
-.AppleDouble
-.LSOverride
-._*
-.Spotlight-V100
-.Trashes
-.AppleDB
-.AppleDesktop
-Network Trash Folder
-Temporary Items
-.apdisk
-Thumbs.db
-ehthumbs.db
-Desktop.ini
-$RECYCLE.BIN/
-*.cab
-*.msi
-*.msm
-*.msp
-*.lnk
+.env
+# separate repositories that happen to be checked out here
+fpgasim/
+mcusim/

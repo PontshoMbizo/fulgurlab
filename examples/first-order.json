@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "name": "First-order step response",
+  "description": "Unit step into 1/(s+1). Exact answer: y = 1 - e^(-t).",
+  "settings": {
+    "tf": 5,
+    "dt": 0.01
+  },
+  "blocks": [
+    {
+      "id": "step",
+      "type": "step",
+      "params": {
+        "time": 0
+      },
+      "x": 60,
+      "y": 120,
+      "name": "Step"
+    },
+    {
+      "id": "plant",
+      "type": "transferFn",
+      "params": {
+        "num": [
+          1
+        ],
+        "den": [
+          1,
+          1
+        ]
+      },
+      "x": 260,
+      "y": 120,
+      "name": "Plant"
+    },
+    {
+      "id": "scope",
+      "type": "scope",
+      "params": {
+        "inputs": 1
+      },
+      "x": 480,
+      "y": 120,
+      "name": "Response"
+    }
+  ],
+  "links": [
+    {
+      "from": {
+        "block": "step",
+        "port": 0
+      },
+      "to": {
+        "block": "plant",
+        "port": 0
+      }
+    },
+    {
+      "from": {
+        "block": "plant",
+        "port": 0
+      },
+      "to": {
+        "block": "scope",
+        "port": 0
+      }
+    }
+  ]
+}

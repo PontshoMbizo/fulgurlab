@@ -1,0 +1,133 @@
+{
+  "version": 1,
+  "name": "PID position loop",
+  "description": "PID controlling 1/(s^2+2s+1) with unity feedback. The scope shows reference and output; Ki > 0 removes the steady-state error.",
+  "settings": {
+    "tf": 10,
+    "dt": 0.01
+  },
+  "blocks": [
+    {
+      "id": "ref",
+      "type": "step",
+      "params": {
+        "time": 0.5
+      },
+      "x": 40,
+      "y": 140,
+      "name": "Reference"
+    },
+    {
+      "id": "err",
+      "type": "sum",
+      "params": {
+        "signs": "+-"
+      },
+      "x": 200,
+      "y": 140,
+      "name": "Error"
+    },
+    {
+      "id": "pid",
+      "type": "pid",
+      "params": {
+        "kp": 4,
+        "ki": 2,
+        "kd": 1,
+        "n": 100
+      },
+      "x": 340,
+      "y": 140,
+      "name": "Controller"
+    },
+    {
+      "id": "plant",
+      "type": "transferFn",
+      "params": {
+        "num": [
+          1
+        ],
+        "den": [
+          1,
+          2,
+          1
+        ]
+      },
+      "x": 520,
+      "y": 140,
+      "name": "Plant"
+    },
+    {
+      "id": "scope",
+      "type": "scope",
+      "params": {
+        "inputs": 2
+      },
+      "x": 740,
+      "y": 120,
+      "name": "Response"
+    }
+  ],
+  "links": [
+    {
+      "from": {
+        "block": "ref",
+        "port": 0
+      },
+      "to": {
+        "block": "err",
+        "port": 0
+      }
+    },
+    {
+      "from": {
+        "block": "err",
+        "port": 0
+      },
+      "to": {
+        "block": "pid",
+        "port": 0
+      }
+    },
+    {
+      "from": {
+        "block": "pid",
+        "port": 0
+      },
+      "to": {
+        "block": "plant",
+        "port": 0
+      }
+    },
+    {
+      "from": {
+        "block": "plant",
+        "port": 0
+      },
+      "to": {
+        "block": "err",
+        "port": 1
+      }
+    },
+    {
+      "from": {
+        "block": "ref",
+        "port": 0
+      },
+      "to": {
+        "block": "scope",
+        "port": 0
+      }
+    },
+    {
+      "from": {
+        "block": "plant",
+        "port": 0
+      },
+      "to": {
+        "block": "scope",
+        "port": 1
+      }
+    }
+  ]
+}

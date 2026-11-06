@@ -1,24 +1,16 @@
 {
   "name": "fulgurlab",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "private": true,
-  "description": "Unified electronics lab: a TypeScript circuit-simulation engine (ported from circuitjs1) plus fpgasim/mcusim lockstep co-simulation (see docs/bridge-protocol.md)",
-  "license": "GPL-2.0-or-later",
-  "engines": {
-    "node": ">=22"
-  },
-  "comment": "The npm workspace root is web/ (that is where node_modules lives, and where both packages resolve @fulgurlab/engine from). These scripts delegate into it so `npm test` works from the repository root as well.",
+  "description": "A basic Simulink-style block diagram simulator for the browser, backed by headless Scilab/Xcos",
   "scripts": {
-    "postinstall": "npm --prefix web install",
-    "test": "npm --prefix web/engine run test && npm --prefix web/app run test",
-    "test:engine": "npm --prefix web/engine run test",
-    "test:app": "npm --prefix web/app run test",
-    "typecheck": "npm --prefix web/engine run typecheck && npm --prefix web/app run typecheck",
-    "lint": "npm --prefix web/app run lint",
-    "dev": "npm --prefix web/app run dev",
-    "build": "npm --prefix web/app run build",
-    "start": "npm --prefix web/app run start",
-    "record:golden": "node tools/golden-recorder/record.mjs",
-    "record:transcript": "node integration-tests/record-transcript.mjs"
-  }
+    "install:all": "npm --prefix web install",
+    "dev:server": "npm --prefix server run dev",
+    "dev:web": "npm --prefix web run dev",
+    "build": "npm --prefix web run build",
+    "test": "npm --prefix server test",
+    "typecheck": "npm --prefix web run typecheck",
+    "start": "npm --prefix server start"
+  },
+  "engines": { "node": ">=20" }
 }

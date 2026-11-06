@@ -1,0 +1,23 @@
+# Production-ish defaults. Block parameters are evaluated by Scilab, so the
+# server only accepts whitelisted blocks and plain numbers (server/src/netlist.js);
+# the container settings below are the second line of defence.
+services:
+  fulgurlab:
+    build: .
+    image: fulgurlab:latest
+    ports:
+      - "8080:8080"
+    environment:
+      SIM_TIMEOUT_MS: "20000"
+      SIM_CONCURRENCY: "2"
+      # CORS_ORIGINS: "https://scope.io"   # when the editor is served from another origin
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m
+      - /home/fulgur:size=16m
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 256
+    mem_limit: 2g
+    cpus: 2
+    restart: unless-stopped
