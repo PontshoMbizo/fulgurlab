@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Block, Link, Netlist, PortRef, Selection } from './types';
 import { BlockGlyph } from './BlockGlyph';
 import { IconFit, IconZoomIn, IconZoomOut } from './Icons';
-import { blockSize, inPortPos, outPortPos, ports, snap, wirePath } from './model';
+import { blockSize, blocksInRect, inPortPos, outPortPos, ports, selectedIds, selectionOf, snap, wirePath } from './model';
 
 interface Props {
   net: Netlist;
@@ -27,7 +27,8 @@ interface Props {
 export interface CanvasControls { zoomIn: () => void; zoomOut: () => void; fit: () => void }
 
 type Drag =
-  | { kind: 'move'; id: string; dx: number; dy: number; moved: boolean }
+  | { kind: 'move'; sx: number; sy: number; starts: Record<string, { x: number; y: number }>; moved: boolean; /** a plain click on a block of a multi-selection narrows it to that block */ collapseTo?: string }
+  | { kind: 'box'; x0: number; y0: number; x1: number; y1: number; base: string[] }
   | { kind: 'wire'; from: PortRef; x: number; y: number }
   | { kind: 'pan'; sx: number; sy: number; ox: number; oy: number };
 
@@ -37,6 +38,7 @@ export function Canvas({ net, selection, errorBlocks, onChange, onSelect, onOpen
   const [drag, setDrag] = useState<Drag | null>(null);
   const [hoverIn, setHoverIn] = useState<PortRef | null>(null);
   const byId = new Map(net.blocks.map((b) => [b.id, b]));
+  const selectedSet = new Set(selectedIds(selection));
 
   /** screen -> diagram coordinates */
   const toWorld = useCallback((cx: number, cy: number) => {
@@ -70,9 +72,15 @@ export function Canvas({ net, selection, errorBlocks, onChange, onSelect, onOpen
     }
     const p = toWorld(e.clientX, e.clientY);
     if (drag.kind === 'move') {
-      const blocks = net.blocks.map((b) => (b.id === drag.id ? { ...b, x: snap(p.x - drag.dx), y: snap(p.y - drag.dy) } : b));
+      const dx = p.x - drag.sx, dy = p.y - drag.sy;
+      if (!drag.moved && Math.hypot(dx, dy) * view.k < 3) return; // a click, not a drag
+      const blocks = net.blocks.map((b) => { const s = drag.starts[b.id]; return s ? { ...b, x: snap(s.x + dx), y: snap(s.y + dy) } : b; });
       if (!drag.moved) setDrag({ ...drag, moved: true });
       onChange({ ...net, blocks }, false);
+    } else if (drag.kind === 'box') {
+      const next = { ...drag, x1: p.x, y1: p.y };
+      setDrag(next);
+      onSelect(selectionOf([...new Set([...drag.base, ...blocksInRect(net.blocks, next)])]));
     } else if (drag.kind === 'wire') {
       setDrag({ ...drag, x: p.x, y: p.y });
       setHoverIn(nearestInput(p.x, p.y));
@@ -81,6 +89,7 @@ export function Canvas({ net, selection, errorBlocks, onChange, onSelect, onOpen
 
   const onPointerUp = (e: React.PointerEvent) => {
     if (drag?.kind === 'move' && drag.moved) onChange(net, true);
+    else if (drag?.kind === 'move' && drag.collapseTo) onSelect({ kind: 'block', id: drag.collapseTo });
     if (drag?.kind === 'wire') {
       const p = toWorld(e.clientX, e.clientY);
       const target = nearestInput(p.x, p.y);
@@ -99,8 +108,18 @@ export function Canvas({ net, selection, errorBlocks, onChange, onSelect, onOpen
     e.stopPropagation();
     (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
     const p = toWorld(e.clientX, e.clientY);
-    setDrag({ kind: 'move', id: b.id, dx: p.x - b.x, dy: p.y - b.y, moved: false });
-    onSelect({ kind: 'block', id: b.id });
+    const current = selectedIds(selection);
+    if (e.shiftKey || e.ctrlKey || e.metaKey) {
+      // shift/ctrl-click adds or removes a block; it does not start a drag
+      onSelect(selectionOf(current.includes(b.id) ? current.filter((id) => id !== b.id) : [...current, b.id]));
+      return;
+    }
+    const inSelection = current.includes(b.id) && current.length > 1;
+    const moving = inSelection ? current : [b.id];
+    const starts: Record<string, { x: number; y: number }> = {};
+    for (const id of moving) { const m = byId.get(id); if (m) starts[id] = { x: m.x, y: m.y }; }
+    setDrag({ kind: 'move', sx: p.x, sy: p.y, starts, moved: false, collapseTo: inSelection ? b.id : undefined });
+    if (!inSelection) onSelect({ kind: 'block', id: b.id });
   };
 
   const startWire = (e: React.PointerEvent, b: Block, port: number) => {
@@ -109,10 +128,18 @@ export function Canvas({ net, selection, errorBlocks, onChange, onSelect, onOpen
     setDrag({ kind: 'wire', from: { block: b.id, port }, x: p.x, y: p.y });
   };
 
+  /** Left-drag on the background draws a selection box; middle-drag or Alt+drag pans. */
   const startPan = (e: React.PointerEvent) => {
-    if (e.button !== 0 && e.button !== 1) return;
-    onSelect(null);
-    setDrag({ kind: 'pan', sx: e.clientX, sy: e.clientY, ox: view.x, oy: view.y });
+    if (e.button === 1 || (e.button === 0 && e.altKey)) {
+      e.preventDefault();
+      setDrag({ kind: 'pan', sx: e.clientX, sy: e.clientY, ox: view.x, oy: view.y });
+      return;
+    }
+    if (e.button !== 0) return;
+    const p = toWorld(e.clientX, e.clientY);
+    const base = e.shiftKey || e.ctrlKey || e.metaKey ? selectedIds(selection) : [];
+    if (!base.length) onSelect(null);
+    setDrag({ kind: 'box', x0: p.x, y0: p.y, x1: p.x, y1: p.y, base });
   };
 
   // wheel zoom around the cursor (non-passive so the page doesn't scroll)
@@ -228,7 +255,7 @@ export function Canvas({ net, selection, errorBlocks, onChange, onSelect, onOpen
           {net.blocks.map((b) => {
             const { w, h } = blockSize(b);
             const { inputs, outputs } = ports(b);
-            const sel = selection?.kind === 'block' && selection.id === b.id;
+            const sel = selectedSet.has(b.id);
             return (
               <g key={b.id} transform={`translate(${b.x},${b.y})`} className={`block ${sel ? 'is-selected' : ''} ${errorBlocks.has(b.id) ? 'has-error' : ''}`}>
                 <g onPointerDown={(e) => startMove(e, b)} onDoubleClick={() => onOpen?.(b.id)} className="block-body">
@@ -261,6 +288,9 @@ export function Canvas({ net, selection, errorBlocks, onChange, onSelect, onOpen
               </g>
             );
           })}
+          {drag?.kind === 'box' && (
+            <rect x={Math.min(drag.x0, drag.x1)} y={Math.min(drag.y0, drag.y1)} width={Math.abs(drag.x1 - drag.x0)} height={Math.abs(drag.y1 - drag.y0)} className="marquee" pointerEvents="none" />
+          )}
         </g>
       </svg>
       {net.blocks.length === 0 && (

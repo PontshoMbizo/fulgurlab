@@ -298,3 +298,5 @@ button.link { background: none; border: 0; color: var(--select); padding: 0; tex
   .inspector { order: 3; border-left: 0; border-top: 1px solid var(--frame); max-height: none; }
 }
 @media (prefers-reduced-motion: reduce) { .fulgur * { transition: none !important; } }
+
+.marquee { fill: rgba(10, 100, 200, 0.08); stroke: var(--select); stroke-width: 1; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }

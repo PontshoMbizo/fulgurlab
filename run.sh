@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Start fulgurlab for development: API on :8080, editor on http://localhost:5173.
+# Start fulgurlab for development: API on :8080, editor on http://localhost:5173
+# (or the next free port if 5173 is taken; set FULGUR_WEB_PORT to choose one).
 # Uses local Scilab if installed, otherwise builds and runs the server in a container
 # (podman or docker). Ctrl+C stops everything.
 set -euo pipefail
@@ -38,5 +39,14 @@ else
   PIDS+=($!)
 fi
 
-echo "▶ Editor: http://localhost:5173"
+# Vite would pick another port silently if this one is busy, so choose a free one here and say which.
+# (ss sees listeners on ::1 as well as 127.0.0.1; fall back to a connect test where ss is missing)
+port_free() {
+  if command -v ss >/dev/null 2>&1; then ! ss -ltn 2>/dev/null | awk '{print $4}' | grep -Eq "[:.]$1\$"
+  else ! (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; fi
+}
+WEB_PORT=${FULGUR_WEB_PORT:-5173}
+until port_free "$WEB_PORT"; do WEB_PORT=$((WEB_PORT + 1)); done
+export FULGUR_WEB_PORT=$WEB_PORT FULGUR_API=http://127.0.0.1:8080
+echo "▶ Editor: http://localhost:$WEB_PORT"
 npm run dev:web

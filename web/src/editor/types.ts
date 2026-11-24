@@ -41,4 +41,4 @@ export type SimResult =
   | { ok: true; scopes: Record<string, Trace>; elapsedMs: number }
   | { ok: false; error: string; issues?: Issue[]; log?: string };
 
-export type Selection = { kind: 'block'; id: string } | { kind: 'link'; index: number } | null;
+export type Selection = { kind: 'block'; id: string } | { kind: 'blocks'; ids: string[] } | { kind: 'link'; index: number } | null;

@@ -7,9 +7,10 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 5173,
+    port: Number(process.env.FULGUR_WEB_PORT) || 5173,
     fs: { allow: ['..'] },
-    proxy: { '/api': process.env.FULGUR_API || 'http://localhost:8080' },
+    // 127.0.0.1, not localhost: localhost can resolve to ::1, where a container's port is not published
+    proxy: { '/api': process.env.FULGUR_API || 'http://127.0.0.1:8080' },
   },
   build: { outDir: 'dist', sourcemap: true },
 });

@@ -80,7 +80,7 @@ For development you need Node 20 or later and Scilab with the Xcos simulation li
 sudo apt install --no-install-recommends scilab-cli scilab-full-bin
 npm --prefix web install
 npm run dev:server    # API on :8080
-npm run dev:web       # editor on http://localhost:5173, proxies /api to :8080
+npm run dev:web       # editor on http://localhost:5173 (FULGUR_WEB_PORT to change), proxies /api to 127.0.0.1:8080
 npm test              # simulation tests are skipped if Scilab is not installed
 ```
 
@@ -108,7 +108,7 @@ podman run --rm fulgurlab sh -c "cd server && node --test test/*.test.js"
 - There is no per-client rate limiting and no network namespace for the Scilab process yet. Put the server behind scope.io's API gateway, or add both, before exposing it publicly.
 - Limits per run: 200 blocks, 1 million samples per scope, 2 million in total.
 - It is pinned to Scilab 2024.0 from Ubuntu. Upstream is newer, and the tests are the regression check before any upgrade.
-- 22 simulating blocks, plus Subsystem, Inport and Outport. The state-space block is single-input single-output, and the user function has no time variable. The editor can wrap one block at a time in a subsystem (no multi-select yet).
+- 22 simulating blocks, plus Subsystem, Inport and Outport. The state-space block is single-input single-output, and the user function has no time variable.
 - The repository started as a fork of CircuitJS. That code was removed in November 2026 and only remains in the git history.
 
 ## Layout

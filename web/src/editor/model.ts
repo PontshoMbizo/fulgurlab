@@ -1,6 +1,6 @@
 // Geometry and pure helpers for the diagram model.
 import { BLOCK_MAP, defaultParams, portCounts } from '../../../shared/catalog.js';
-import type { Block, Level, Link, Netlist, Params } from './types';
+import type { Block, Level, Link, Netlist, Params, Selection } from './types';
 
 export const GRID = 8;
 export const snap = (v: number) => Math.round(v / GRID) * GRID;
@@ -182,6 +182,41 @@ export function parseMatrix(s: string): number[][] | null {
 
 export function formatMatrix(m: number[][]) {
   return m.map((r) => r.join(' ')).join('; ');
+}
+
+/** Ids of the selected blocks (one for a single selection, several for a marquee or shift-click). */
+export function selectedIds(sel: Selection): string[] {
+  return sel?.kind === 'block' ? [sel.id] : sel?.kind === 'blocks' ? sel.ids : [];
+}
+
+/** The selection for a list of block ids: none, one block, or several. */
+export function selectionOf(ids: string[]): Selection {
+  return ids.length === 0 ? null : ids.length === 1 ? { kind: 'block', id: ids[0] } : { kind: 'blocks', ids };
+}
+
+/** Copy blocks (and the wires between them) 24 px down and right. Returns the new level and the ids of the copies. */
+export function duplicateBlocks(level: Level, ids: Set<string>): { level: Level; ids: string[] } {
+  const taken = new Set(level.blocks.map((b) => b.id));
+  const created: Block[] = [];
+  const idMap = new Map<string, string>();
+  for (const src of level.blocks.filter((b) => ids.has(b.id))) {
+    const made = makeBlock(src.type, src.x + 24, src.y + 24, taken, [...level.blocks, ...created]);
+    taken.add(made.id);
+    idMap.set(src.id, made.id);
+    // Inports and Outports keep the fresh port number from makeBlock; everything else copies the original
+    const keepFresh = src.type === 'inport' || src.type === 'outport';
+    created.push({ ...made, ...(keepFresh ? {} : { params: structuredClone(src.params), name: src.name }), ...(src.system ? { system: structuredClone(src.system) } : {}) });
+  }
+  const links = level.links.filter((l) => idMap.has(l.from.block) && idMap.has(l.to.block))
+    .map((l) => ({ from: { block: idMap.get(l.from.block)!, port: l.from.port }, to: { block: idMap.get(l.to.block)!, port: l.to.port } }));
+  return { level: { blocks: [...level.blocks, ...created], links: [...level.links, ...links] }, ids: created.map((b) => b.id) };
+}
+
+/** Blocks whose footprint touches the rectangle (diagram coordinates). */
+export function blocksInRect(blocks: Block[], r: { x0: number; y0: number; x1: number; y1: number }): string[] {
+  const [x0, x1] = [Math.min(r.x0, r.x1), Math.max(r.x0, r.x1)];
+  const [y0, y1] = [Math.min(r.y0, r.y1), Math.max(r.y0, r.y1)];
+  return blocks.filter((b) => { const { w, h } = blockSize(b); return b.x < x1 && b.x + w > x0 && b.y < y1 && b.y + h > y0; }).map((b) => b.id);
 }
 
 export function emptyNetlist(): Netlist {

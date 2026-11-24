@@ -9,7 +9,7 @@ import { ScopePanel } from './ScopePanel';
 import { MenuBar, type MenuDef } from './Menus';
 import * as I from './Icons';
 import { runSimulation } from './api';
-import { emptyNetlist, findByPath, groupIntoSubsystem, makeBlock, normalizeLevel, ports, pruneLinks, toWire, validPath, withLevel } from './model';
+import { duplicateBlocks, emptyNetlist, findByPath, groupIntoSubsystem, makeBlock, normalizeLevel, ports, pruneLinks, selectedIds, selectionOf, toWire, validPath, withLevel } from './model';
 
 export interface FulgurEditorProps {
   /** Diagram to start with. Change `loadKey` to load a different one later. */
@@ -127,8 +127,9 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
   };
 
   const deleteSelection = () => {
-    if (selection?.kind === 'block') {
-      updateView({ ...view, blocks: view.blocks.filter((b) => b.id !== selection.id), links: view.links.filter((l) => l.from.block !== selection.id && l.to.block !== selection.id) });
+    const ids = new Set(selectedIds(selection));
+    if (ids.size) {
+      updateView({ ...view, blocks: view.blocks.filter((b) => !ids.has(b.id)), links: view.links.filter((l) => !ids.has(l.from.block) && !ids.has(l.to.block)) });
     } else if (selection?.kind === 'link') {
       updateView({ ...view, links: view.links.filter((_, i) => i !== selection.index) });
     }
@@ -136,22 +137,18 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
   };
 
   const duplicate = () => {
-    if (selection?.kind !== 'block') return;
-    const src = view.blocks.find((b) => b.id === selection.id);
-    if (!src) return;
-    const made = makeBlock(src.type, src.x + 24, src.y + 24, new Set(view.blocks.map((x) => x.id)), view.blocks);
-    // Inports and Outports keep the fresh port number from makeBlock; everything else copies the original
-    const b: Block = { ...made, params: src.type === 'inport' || src.type === 'outport' ? made.params : structuredClone(src.params), ...(src.system ? { system: structuredClone(src.system) } : {}) };
-    updateView({ ...view, blocks: [...view.blocks, b] });
-    setSelection({ kind: 'block', id: b.id });
+    const ids = new Set(selectedIds(selection));
+    if (!ids.size) return;
+    const d = duplicateBlocks(view, ids);
+    updateView({ ...view, ...d.level });
+    setSelection(selectionOf(d.ids));
   };
 
-  /** Wrap the selected block in a new subsystem; wires that crossed its edge go through Inports and Outports. */
+  /** Wrap the selected blocks in a new subsystem; wires that crossed its edge go through Inports and Outports. */
+  const groupable = selectedIds(selection).filter((id) => !['inport', 'outport'].includes(view.blocks.find((b) => b.id === id)?.type ?? 'inport'));
   const group = () => {
-    if (selection?.kind !== 'block') return;
-    const src = view.blocks.find((b) => b.id === selection.id);
-    if (!src || src.type === 'inport' || src.type === 'outport') return;
-    const g = groupIntoSubsystem(view, new Set([selection.id]));
+    if (!groupable.length) return;
+    const g = groupIntoSubsystem(view, new Set(groupable));
     updateView({ ...view, ...g.level });
     setSelection({ kind: 'block', id: g.id });
   };
@@ -177,9 +174,10 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
 
   // keyboard shortcuts (ignored while typing in a field)
   const runRef = useRef(run); runRef.current = run;
+  const selectAll = () => setSelection(selectionOf(view.blocks.map((b) => b.id)));
   const openSelected = () => { if (selection?.kind === 'block') openBlock(selection.id); };
-  const keysRef = useRef({ deleteSelection, doUndo, doRedo, duplicate, openSelected, goUp: () => goTo(path.length - 1) });
-  keysRef.current = { deleteSelection, doUndo, doRedo, duplicate, openSelected, goUp: () => goTo(path.length - 1) };
+  const keysRef = useRef({ deleteSelection, doUndo, doRedo, duplicate, group, selectAll, openSelected, goUp: () => goTo(path.length - 1) });
+  keysRef.current = { deleteSelection, doUndo, doRedo, duplicate, group, selectAll, openSelected, goUp: () => goTo(path.length - 1) };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
@@ -191,6 +189,8 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
       else if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); keysRef.current.doUndo(); }
       else if (mod && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) { e.preventDefault(); keysRef.current.doRedo(); }
       else if (mod && e.key.toLowerCase() === 'd') { e.preventDefault(); keysRef.current.duplicate(); }
+      else if (mod && e.key.toLowerCase() === 'g') { e.preventDefault(); keysRef.current.group(); }
+      else if (mod && e.key.toLowerCase() === 'a') { e.preventDefault(); keysRef.current.selectAll(); }
       else if (e.key === 'Enter') keysRef.current.openSelected();
       else if (e.altKey && e.key === 'ArrowUp') { e.preventDefault(); keysRef.current.goUp(); }
       else if (e.key === 'Escape') setSelection(null);
@@ -273,10 +273,11 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
     { label: 'Edit', mnemonic: 0, items: [
       { label: 'Undo', shortcut: 'Ctrl+Z', disabled: !undo.current.length, onSelect: doUndo },
       { label: 'Redo', shortcut: 'Ctrl+Y', disabled: !redo.current.length, onSelect: doRedo },
-      { label: 'Duplicate', shortcut: 'Ctrl+D', disabled: selection?.kind !== 'block', onSelect: duplicate },
+      { label: 'Duplicate', shortcut: 'Ctrl+D', disabled: !selectedIds(selection).length, onSelect: duplicate },
       { label: 'Delete', shortcut: 'Del', disabled: !selection, onSelect: deleteSelection },
       { label: 'Open subsystem', shortcut: 'Enter', disabled: !(selection?.kind === 'block' && view.blocks.find((b) => b.id === selection.id)?.type === 'subsystem'), onSelect: openSelected },
-      { label: 'Group block into subsystem', disabled: !(selection?.kind === 'block' && !['inport', 'outport'].includes(view.blocks.find((b) => b.id === selection.id)?.type ?? 'inport')), onSelect: group },
+      { label: 'Group into subsystem', shortcut: 'Ctrl+G', disabled: !groupable.length, onSelect: group },
+      { label: 'Select all', shortcut: 'Ctrl+A', disabled: !view.blocks.length, onSelect: () => setSelection(selectionOf(view.blocks.map((b) => b.id))) },
     ] },
     { label: 'View', mnemonic: 0, items: [
       { label: 'Zoom in', onSelect: () => canvasControls.current?.zoomIn() },
@@ -394,7 +395,7 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
           controlsRef={canvasControls}
           onZoom={setZoom}
         />
-        <Inspector net={view} selection={selection} issues={issues} onBlockChange={changeBlock} onSettings={(p) => update({ ...net, ...p })} onDelete={deleteSelection} onClose={() => setSelection(null)} />
+        <Inspector net={view} selection={selection} issues={issues} onGroup={groupable.length ? group : undefined} onBlockChange={changeBlock} onSettings={(p) => update({ ...net, ...p })} onDelete={deleteSelection} onClose={() => setSelection(null)} />
       </div>
 
       {(!result || !result.ok || Object.keys(result.scopes).length === 0) && (
@@ -469,7 +470,11 @@ const SHORTCUTS: [string, string][] = [
   ['Ctrl+Enter', 'Run the simulation'],
   ['Ctrl+Z', 'Undo'],
   ['Ctrl+Y / Ctrl+Shift+Z', 'Redo'],
-  ['Ctrl+D', 'Duplicate the selected block'],
+  ['Ctrl+D', 'Duplicate the selected blocks'],
+  ['Ctrl+G', 'Group the selected blocks into a subsystem'],
+  ['Ctrl+A', 'Select all blocks'],
+  ['Shift+click, or drag a box', 'Select several blocks'],
+  ['Middle-drag or Alt+drag', 'Pan the diagram'],
   ['Delete / Backspace', 'Delete the selection'],
   ['Escape', 'Clear the selection'],
   ['Mouse wheel', 'Zoom the diagram'],

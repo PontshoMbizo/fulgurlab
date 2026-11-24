@@ -10,6 +10,8 @@ interface Props {
   onBlockChange: (id: string, patch: Partial<Block>) => void;
   onSettings: (patch: Partial<Netlist>) => void;
   onDelete: () => void;
+  /** present when the selection can be grouped into a subsystem */
+  onGroup?: () => void;
   /** OK: apply, then drop the selection */
   onClose: () => void;
 }
@@ -154,7 +156,24 @@ function portSummary(net: Netlist, b: Block, inputs: number, outputs: number) {
   return `${ins}, ${outs}.`;
 }
 
-export function Inspector({ net, selection, issues, onBlockChange, onSettings, onDelete, onClose }: Props) {
+export function Inspector({ net, selection, issues, onBlockChange, onSettings, onDelete, onGroup, onClose }: Props) {
+  if (selection?.kind === 'blocks') {
+    return (
+      <aside className="inspector" aria-label="Selection">
+        <div className="panel-title">{selection.ids.length} blocks selected</div>
+        <div className="inspector-body">
+          <fieldset className="etched">
+            <legend>Selection</legend>
+            <p className="muted">Drag to move them together. Select a single block to edit its parameters.</p>
+          </fieldset>
+        </div>
+        <div className="dialog-buttons inspector-buttons">
+          {onGroup && <button type="button" className="btn" onClick={onGroup}>Group</button>}
+          <button type="button" className="btn btn-delete" onClick={onDelete}>Delete</button>
+        </div>
+      </aside>
+    );
+  }
   if (selection?.kind === 'block') {
     const b = net.blocks.find((x) => x.id === selection.id);
     if (!b) return null;
