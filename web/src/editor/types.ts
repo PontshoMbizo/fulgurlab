@@ -12,7 +12,12 @@ export interface Block {
   y: number;
   /** Display name shown under the block (editor-only; the server ignores it). */
   name?: string;
+  /** The nested diagram of a subsystem block. */
+  system?: Level;
 }
+
+/** One level of the diagram: the top level, or what is inside a subsystem. */
+export interface Level { blocks: Block[]; links: Link[] }
 
 export interface Link { from: PortRef; to: PortRef }
 

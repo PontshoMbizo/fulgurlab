@@ -1,6 +1,6 @@
 // Geometry and pure helpers for the diagram model.
 import { BLOCK_MAP, defaultParams, portCounts } from '../../../shared/catalog.js';
-import type { Block, Link, Netlist, Params } from './types';
+import type { Block, Level, Link, Netlist, Params } from './types';
 
 export const GRID = 8;
 export const snap = (v: number) => Math.round(v / GRID) * GRID;
@@ -21,6 +21,8 @@ export function blockSize(b: Block): { w: number; h: number } {
       return { w: Math.max(88, Math.ceil((16 + longest * 9.6) / GRID) * GRID), h: Math.max(64, n * 24 + 16) };
     }
     case 'pid': return { w: 104, h: 64 };
+    case 'subsystem': return { w: 112, h: Math.max(64, n * 28 + 16) };
+    case 'inport': case 'outport': return { w: 48, h: 32 };
     case 'stateSpace': return { w: 104, h: 64 };
     case 'switch': return { w: 88, h: 72 };
     case 'userFn': return { w: 96, h: Math.max(56, n * 24 + 16) };
@@ -29,7 +31,7 @@ export function blockSize(b: Block): { w: number; h: number } {
 }
 
 export function ports(b: Block) {
-  try { return portCounts(b.type, b.params); } catch { return { inputs: 0, outputs: 0 }; }
+  try { return portCounts(b.type, b.params, b.system); } catch { return { inputs: 0, outputs: 0 }; }
 }
 
 export function inPortPos(b: Block, i: number) {
@@ -95,11 +97,31 @@ export function newId(type: string, taken: Set<string>) {
   return id;
 }
 
-export function makeBlock(type: string, x: number, y: number, taken: Set<string>): Block {
+/** What a new subsystem holds: one Inport wired straight to one Outport, so it is valid as soon as it is placed. */
+export function defaultSystem(): Level {
+  return {
+    blocks: [
+      { id: 'in1', type: 'inport', params: { index: 1 }, x: 48, y: 96, name: 'In1' },
+      { id: 'out1', type: 'outport', params: { index: 1 }, x: 288, y: 96, name: 'Out1' },
+    ],
+    links: [{ from: { block: 'in1', port: 0 }, to: { block: 'out1', port: 0 } }],
+  };
+}
+
+/** `siblings` are the blocks already on this level; Inports and Outports take the next free port number. */
+export function makeBlock(type: string, x: number, y: number, taken: Set<string>, siblings: Block[] = []): Block {
   const id = newId(type, taken);
   const label = BLOCK_MAP[type].label;
   const same = [...taken].filter((t) => t.startsWith(type)).length;
-  return { id, type, params: defaultParams(type), x: snap(x), y: snap(y), name: same ? `${label} ${same + 1}` : label };
+  const b: Block = { id, type, params: defaultParams(type), x: snap(x), y: snap(y), name: same ? `${label} ${same + 1}` : label };
+  if (type === 'subsystem') b.system = defaultSystem();
+  if (type === 'inport' || type === 'outport') {
+    const used = siblings.filter((o) => o.type === type).map((o) => Number(o.params.index) || 0);
+    const index = Math.min(16, Math.max(0, ...used) + 1);
+    b.params = { index };
+    b.name = `${type === 'inport' ? 'In' : 'Out'}${index}`;
+  }
+  return b;
 }
 
 /** Drop links whose ports no longer exist (e.g. after changing Sum signs). */
@@ -171,9 +193,131 @@ export function toWire(n: Netlist) {
   return {
     version: 1,
     settings: n.settings,
-    blocks: n.blocks.map(({ id, type, params }) => ({ id, type, params })),
-    links: n.links,
+    ...wireLevel(n),
   };
+}
+
+function wireLevel(l: Level): { blocks: object[]; links: Link[] } {
+  return {
+    blocks: l.blocks.map(({ id, type, params, system }) => (system ? { id, type, params, system: wireLevel(system) } : { id, type, params })),
+    links: l.links,
+  };
+}
+
+// ---- levels: the top diagram and the diagrams inside subsystems
+
+/** The diagram at `path` (subsystem ids from the top), or null when the path leads nowhere. */
+export function levelAt(top: Level, path: string[]): Level | null {
+  let cur: Level = top;
+  for (const id of path) {
+    const next = cur.blocks.find((b) => b.id === id)?.system;
+    if (!next) return null;
+    cur = next;
+  }
+  return cur;
+}
+
+/** The longest leading part of `path` that still exists (undo can remove a subsystem you are inside). */
+export function validPath(top: Level, path: string[]): string[] {
+  let cur: Level = top;
+  const out: string[] = [];
+  for (const id of path) {
+    const next = cur.blocks.find((b) => b.id === id)?.system;
+    if (!next) break;
+    out.push(id);
+    cur = next;
+  }
+  return out;
+}
+
+/**
+ * Replace the blocks and links at `path`. Ports of a subsystem come from the Inports and
+ * Outports inside it, so links in the levels above may now point at ports that are gone: prune those.
+ */
+export function withLevel(net: Netlist, path: string[], blocks: Block[], links: Link[]): Netlist {
+  const replace = (level: Level, rest: string[]): Level => {
+    if (!rest.length) return { blocks, links };
+    const [head, ...tail] = rest;
+    const nb = level.blocks.map((b) => (b.id === head && b.system ? { ...b, system: replace(b.system, tail) } : b));
+    return { blocks: nb, links: pruneLinks(nb, level.links) };
+  };
+  return { ...net, ...replace({ blocks: net.blocks, links: net.links }, path) };
+}
+
+/** Find a block by the id path the server uses ("fwd/pid"), with the level it sits in and its enclosing subsystem names. */
+export function findByPath(top: Level, idPath: string): { block: Block; level: Level; names: string[] } | null {
+  const parts = idPath.split('/');
+  let level: Level = top;
+  const names: string[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const b = level.blocks.find((x) => x.id === parts[i]);
+    if (!b) return null;
+    if (i === parts.length - 1) return { block: b, level, names };
+    if (!b.system) return null;
+    names.push(b.name || b.id);
+    level = b.system;
+  }
+  return null;
+}
+
+/** Clean a loaded diagram: known block types only, snapped positions, copies of params, recursively. */
+export function normalizeLevel(l: Partial<Level>): Level {
+  const blocks = (Array.isArray(l.blocks) ? l.blocks : []).filter((b) => b && BLOCK_MAP[b.type]).map((b) => {
+    const nb: Block = { ...b, x: snap(b.x ?? 0), y: snap(b.y ?? 0), params: { ...b.params } };
+    if (b.type === 'subsystem') nb.system = normalizeLevel(b.system ?? defaultSystem());
+    else delete nb.system;
+    return nb;
+  });
+  return { blocks, links: Array.isArray(l.links) ? l.links : [] };
+}
+
+/**
+ * Move the blocks `ids` of a level into a new subsystem. Wires that crossed the boundary
+ * now go through Inports and Outports. Returns the new level and the subsystem's id.
+ */
+export function groupIntoSubsystem(level: Level, ids: Set<string>): { level: Level; id: string } {
+  const inside = level.blocks.filter((b) => ids.has(b.id));
+  const outside = level.blocks.filter((b) => !ids.has(b.id));
+  const x0 = Math.min(...inside.map((b) => b.x)), y0 = Math.min(...inside.map((b) => b.y));
+  const x1 = Math.max(...inside.map((b) => b.x + blockSize(b).w));
+  const taken = new Set(level.blocks.map((b) => b.id));
+  const id = newId('subsystem', taken);
+  const innerTaken = new Set(inside.map((b) => b.id));
+  const innerBlocks: Block[] = inside.map((b) => ({ ...b, x: b.x - x0 + 120, y: b.y - y0 + 48 }));
+  const innerLinks: Link[] = [];
+  const outerLinks: Link[] = [];
+  let nIn = 0, nOut = 0;
+  const outFor = new Map<string, number>(); // "block:port" inside -> subsystem output number (0-based)
+  const mk = (type: 'inport' | 'outport', n: number, y: number): Block => {
+    const bid = newId(type === 'inport' ? 'in' : 'out', innerTaken);
+    innerTaken.add(bid);
+    const b: Block = { id: bid, type, params: { index: n }, x: type === 'inport' ? 48 : x1 - x0 + 192, y: snap(y), name: `${type === 'inport' ? 'In' : 'Out'}${n}` };
+    innerBlocks.push(b);
+    return b;
+  };
+  for (const l of level.links) {
+    const fromIn = ids.has(l.from.block), toIn = ids.has(l.to.block);
+    if (fromIn && toIn) innerLinks.push(l);
+    else if (toIn) {
+      const dst = inside.find((b) => b.id === l.to.block)!;
+      const ip = mk('inport', ++nIn, dst.y - y0 + 48);
+      innerLinks.push({ from: { block: ip.id, port: 0 }, to: l.to });
+      outerLinks.push({ from: l.from, to: { block: id, port: nIn - 1 } });
+    } else if (fromIn) {
+      const key = `${l.from.block}:${l.from.port}`;
+      let k = outFor.get(key);
+      if (k === undefined) {
+        const src = inside.find((b) => b.id === l.from.block)!;
+        const op = mk('outport', ++nOut, src.y - y0 + 48);
+        innerLinks.push({ from: l.from, to: { block: op.id, port: 0 } });
+        k = nOut - 1;
+        outFor.set(key, k);
+      }
+      outerLinks.push({ from: { block: id, port: k }, to: l.to });
+    } else outerLinks.push(l);
+  }
+  const sub: Block = { id, type: 'subsystem', params: {}, x: snap(x0), y: snap(y0), name: 'Subsystem', system: { blocks: innerBlocks, links: innerLinks } };
+  return { level: { blocks: [...outside, sub], links: outerLinks }, id };
 }
 
 export function paramsEqual(a: Params, b: Params) {

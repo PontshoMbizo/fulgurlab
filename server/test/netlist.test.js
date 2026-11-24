@@ -163,3 +163,114 @@ test('generated script carries only the re-emitted expression and numbers', () =
   assert.match(script, /\(\(2\*u1\)\+sin\(u1\)\)/);
   assert.ok(!script.includes('  2 *  u1'));
 });
+
+// ---- subsystems
+import { flatten } from '../src/flatten.js';
+const L = (a, ap, b, bp) => ({ from: { block: a, port: ap }, to: { block: b, port: bp } });
+/** step -> sub[ inport -> gain k -> outport ] -> scope */
+const subNet = (k = 3) => ({
+  settings: { tf: 1, dt: 0.1 },
+  blocks: [
+    { id: 'a', type: 'step', params: { time: 0 } },
+    { id: 'sub', type: 'subsystem', system: {
+      blocks: [{ id: 'in', type: 'inport' }, { id: 'g', type: 'gain', params: { k } }, { id: 'out', type: 'outport' }],
+      links: [L('in', 0, 'g', 0), L('g', 0, 'out', 0)] } },
+    { id: 's', type: 'scope' },
+  ],
+  links: [L('a', 0, 'sub', 0), L('sub', 0, 's', 0)],
+});
+
+test('subsystem ports come from its Inport and Outport blocks', () => {
+  const v = validateNetlist(subNet());
+  const sub = v.blocks.find((b) => b.id === 'sub');
+  assert.equal(sub.inputs, 1);
+  assert.equal(sub.outputs, 1);
+  assert.ok(sub.system.blocks.length === 3);
+});
+
+test('flatten removes the subsystem and rewires through its ports', () => {
+  const f = flatten(validateNetlist(subNet(5)));
+  assert.deepEqual(f.blocks.map((b) => b.id).sort(), ['a', 's', 'sub/g']);
+  assert.deepEqual(f.links.map((l) => `${l.from.block}>${l.to.block}`).sort(), ['a>sub/g', 'sub/g>s']);
+  assert.equal(f.blocks.find((b) => b.id === 'sub/g').params.k, 5);
+});
+
+test('flatten handles fan-out through an Inport, pass-through ports and two levels', () => {
+  const net = {
+    settings: { tf: 1, dt: 0.1 },
+    blocks: [
+      { id: 'a', type: 'step' },
+      { id: 'outer', type: 'subsystem', system: {
+        blocks: [
+          { id: 'in', type: 'inport' },
+          { id: 'inner', type: 'subsystem', system: {
+            blocks: [{ id: 'i', type: 'inport' }, { id: 'o', type: 'outport' }], // pure pass-through
+            links: [L('i', 0, 'o', 0)] } },
+          { id: 'g', type: 'gain' },
+          { id: 'o1', type: 'outport', params: { index: 1 } },
+          { id: 'o2', type: 'outport', params: { index: 2 } },
+        ],
+        links: [L('in', 0, 'inner', 0), L('inner', 0, 'o1', 0), L('in', 0, 'g', 0), L('g', 0, 'o2', 0)] } },
+      { id: 's', type: 'scope', params: { inputs: 2 } },
+    ],
+    links: [L('a', 0, 'outer', 0), L('outer', 0, 's', 0), L('outer', 1, 's', 1)],
+  };
+  const f = flatten(validateNetlist(net));
+  assert.deepEqual(f.blocks.map((b) => b.id).sort(), ['a', 'outer/g', 's']);
+  const pairs = f.links.map((l) => `${l.from.block}:${l.from.port}>${l.to.block}:${l.to.port}`).sort();
+  assert.deepEqual(pairs, ['a:0>outer/g:0', 'a:0>s:0', 'outer/g:0>s:1']);
+  // and codegen accepts it, with the fan-out from `a` becoming a split
+  assert.match(generate(validateNetlist(net), '/tmp/out').script, /SPLIT_f\("define"\)/);
+});
+
+test('subsystem validation reports problems with a path to the block', () => {
+  const bad = subNet();
+  bad.blocks[1].system.links = []; // g and out are now unconnected
+  const e = (() => { try { validateNetlist(bad); } catch (x) { return x; } })();
+  assert.ok(e instanceof NetlistError);
+  assert.ok(e.issues.some((i) => i.block === 'sub/g' && /not connected/.test(i.message)), JSON.stringify(e.issues));
+
+  assert.match(issuesOf({ ...base(), blocks: [...base().blocks, { id: 'p', type: 'inport' }] }).join(), /only make sense inside a subsystem/);
+  const dupe = subNet();
+  dupe.blocks[1].system.blocks.push({ id: 'in2', type: 'inport' });
+  assert.match(issuesOf(dupe).join(), /port number 1/);
+  const noSys = subNet();
+  delete noSys.blocks[1].system;
+  assert.match(issuesOf(noSys).join(), /no diagram inside/);
+  const stray = base();
+  stray.blocks[0].system = { blocks: [], links: [] };
+  assert.match(issuesOf(stray).join(), /cannot contain a diagram/);
+});
+
+test('same ids at different levels are fine; depth and total counts are limited', () => {
+  const net = subNet();
+  net.blocks[1].system.blocks[1].id = 'a'; // same id as the top-level step
+  net.blocks[1].system.links = [L('in', 0, 'a', 0), L('a', 0, 'out', 0)];
+  assert.deepEqual(issuesOf(net), []);
+
+  // nest 6 levels deep
+  const deep = { blocks: [], links: [] };
+  let cur = deep;
+  for (let d = 0; d < 6; d++) {
+    const next = { blocks: [], links: [] };
+    cur.blocks.push({ id: 'n', type: 'subsystem', system: next });
+    cur = next;
+  }
+  assert.match(issuesOf({ settings: { tf: 1, dt: 0.1 }, ...deep }).join(), /nested at most 4 deep/);
+
+  // 120 subsystems of 2 blocks each blow the 200-block budget even though no level is large
+  const many = { settings: { tf: 1, dt: 0.1 }, blocks: [], links: [] };
+  for (let i = 0; i < 120; i++) many.blocks.push({ id: `s${i}`, type: 'subsystem', system: { blocks: [{ id: 'x', type: 'constant' }, { id: 'o', type: 'outport' }], links: [L('x', 0, 'o', 0)] } });
+  assert.match(issuesOf(many).join(), /at most 200 blocks/);
+});
+
+test('scopes inside subsystems count towards the sample budget and satisfy the scope requirement', () => {
+  const net = {
+    settings: { tf: 1, dt: 0.1 },
+    blocks: [{ id: 'sub', type: 'subsystem', system: { blocks: [{ id: 'c', type: 'constant' }, { id: 'sc', type: 'scope' }], links: [L('c', 0, 'sc', 0)] } }],
+    links: [],
+  };
+  assert.deepEqual(issuesOf(net), []);
+  net.settings = { tf: 10000, dt: 0.001 }; // 10M samples
+  assert.match(issuesOf(net).join(), /samples per scope/);
+});

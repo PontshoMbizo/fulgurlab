@@ -184,3 +184,28 @@ test('state-space, switch and user function', opts, async () => {
   const sine = await chain({ type: 'sine', params: { amplitude: 1, frequency: 3, phase: 0 } }, { type: 'userFn', params: { expr: 'abs(u1) + exp(0.5)', inputs: 1 } });
   close(at(sine, 0.5), Math.abs(Math.sin(1.5)) + Math.exp(0.5), 1e-6, 'user function with functions and decimals');
 });
+
+test('a subsystem gives exactly the trace of the flat diagram', opts, async () => {
+  const load = (f) => validateNetlist(JSON.parse(readFileSync(new URL(`../../examples/${f}`, import.meta.url), 'utf8')));
+  const flat = (await simulate(load('pid-loop.json'))).scopes.scope;
+  const nested = (await simulate(load('subsystem.json'))).scopes.scope;
+  assert.equal(nested.t.length, flat.t.length);
+  for (let k = 0; k < 2; k++) {
+    let worst = 0;
+    flat.y[k].forEach((v, i) => { worst = Math.max(worst, Math.abs(v - nested.y[k][i])); });
+    assert.ok(worst < 1e-9, `trace ${k} differs by ${worst}`);
+  }
+});
+
+test('scopes inside a subsystem are keyed by their path', opts, async () => {
+  const net = validateNetlist({
+    settings: { tf: 1, dt: 0.1 },
+    blocks: [{ id: 'sub', type: 'subsystem', system: {
+      blocks: [{ id: 'c', type: 'constant', params: { value: 7 } }, { id: 'sc', type: 'scope' }],
+      links: [{ from: { block: 'c', port: 0 }, to: { block: 'sc', port: 0 } }] } }],
+    links: [],
+  });
+  const r = await simulate(net);
+  assert.deepEqual(Object.keys(r.scopes), ['sub/sc']);
+  close(at(r.scopes['sub/sc'], 0.5), 7, 1e-9, 'constant in a subsystem');
+});

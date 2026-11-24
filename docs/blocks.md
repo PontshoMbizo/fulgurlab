@@ -27,6 +27,8 @@ Scilab rebuilds the block from them as it does in Xcos.
 | State-Space (`stateSpace`) | A, B, C, D (matrices), x0 | `CLSS` | One input, one output: A is n×n, B n×1, C 1×n, D 1×1, up to 16 states. The editor takes rows separated by `;`. |
 | Switch (`switch`) | rule (0: ≥, 1: >, 2: ≠), threshold | `SWITCH2_m` | Inputs: 1 (passed when the control meets the rule), 2 (control), 3 (passed otherwise). |
 | User Function (`userFn`) | expr, inputs (1–4) | `EXPRESSION` | `u1..u4`, numbers, `+ - * / ^`, `sin cos tan exp log sqrt abs`. There is no time variable: feed a Clock into an input. The text is parsed by `server/src/expr.js` and re-emitted from the parse tree, so nothing you type reaches Scilab as written. |
+| Subsystem (`subsystem`) | none (has a nested `system`) | none | Flattened before simulation; see [netlist.md](netlist.md#subsystems). |
+| Inport (`inport`), Outport (`outport`) | index | none | Ports of the subsystem they sit in. Only valid inside one. |
 | Scope (`scope`) | inputs (1–8) | `TOWS_c` (+ `MUX`) + `CLOCK_c` | Samples every `settings.dt`; results keyed by block id. |
 
 Wiring helpers that codegen inserts on its own: `SPLIT_f` for one output feeding

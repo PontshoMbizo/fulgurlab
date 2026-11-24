@@ -25,14 +25,27 @@ This is the format the editor saves (`*.fulgur.json`) and the server simulates.
 |---|---|
 | `settings.tf` | Stop time in seconds, `(0, 10000]`. Default 10. |
 | `settings.dt` | Scope sample step in seconds. The solver picks its own internal steps. Default 0.01. |
-| `blocks[].id` | Unique, 1–64 chars of `[A-Za-z0-9_-]`. Scope results are keyed by this id. |
+| `blocks[].id` | Unique within its diagram, 1–64 chars of `[A-Za-z0-9_-]`. Scope results are keyed by this id, or by the id path for a scope inside a subsystem (`fwd/scope`). |
 | `blocks[].type` | A type from `shared/catalog.js` (listed in [blocks.md](blocks.md)). |
-| `blocks[].params` | Optional; missing keys take the catalogue default. Values are numbers, number arrays (polynomials, highest power first), or a sign string for Sum (`"+-"`) and Product (`"*/"`). |
+| `blocks[].params` | Optional; missing keys take the catalogue default. Values are numbers, number arrays (polynomials, highest power first), arrays of rows (`matrix`, state-space), an expression string (`expr`, User Function), or a sign string for Sum (`"+-"`) and Product (`"*/"`). |
+| `blocks[].system` | Only on `subsystem` blocks: a nested `{ blocks, links }` diagram. See below. |
 | `x`, `y`, `name` | Editor-only, ignored by the server. |
 | `links[].from/to` | `{ block, port }`, ports 0-based. An output may feed many inputs; each input takes exactly one wire. |
 
+## Subsystems
+
+A `subsystem` block holds a whole diagram in `system`. Its ports are the `inport` and `outport` blocks inside it: input k of the subsystem is its k-th Inport ordered by the `index` parameter (indices must be unique, gaps are fine), and output k is its k-th Outport. Inport and Outport blocks are only valid inside a subsystem. Ids only need to be unique within one diagram. The server flattens subsystems before simulating, so a nested diagram gives exactly the same trace as the equivalent flat one. Problems inside a subsystem are reported with the id path of the block (`fwd/pid`).
+
+```json
+{ "id": "fwd", "type": "subsystem", "system": {
+    "blocks": [ { "id": "in", "type": "inport" }, { "id": "g", "type": "gain" }, { "id": "out", "type": "outport" } ],
+    "links":  [ { "from": { "block": "in", "port": 0 }, "to": { "block": "g", "port": 0 } },
+                { "from": { "block": "g", "port": 0 },  "to": { "block": "out", "port": 0 } } ] } }
+```
+
 Limits (from `shared/catalog.js`):
-- 200 blocks and 400 links;
+- 200 blocks and 400 links, counted across all levels together;
+- subsystems nested at most 4 deep;
 - 16 coefficients per polynomial;
 - 1,000,000 samples per scope and 2,000,000 in total.
 

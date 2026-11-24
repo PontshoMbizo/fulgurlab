@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BLOCK_MAP, LIMITS } from '../../../shared/catalog.js';
-import type { Block, Issue, Netlist, Selection, SimResult } from './types';
+import { LIMITS } from '../../../shared/catalog.js';
+import type { Block, Issue, Link, Netlist, Selection, SimResult } from './types';
 import { Canvas, type CanvasControls } from './Canvas';
 import { Palette } from './Palette';
 import { Inspector } from './Inspector';
@@ -9,7 +9,7 @@ import { ScopePanel } from './ScopePanel';
 import { MenuBar, type MenuDef } from './Menus';
 import * as I from './Icons';
 import { runSimulation } from './api';
-import { emptyNetlist, makeBlock, ports, pruneLinks, snap, toWire } from './model';
+import { emptyNetlist, findByPath, groupIntoSubsystem, makeBlock, normalizeLevel, ports, pruneLinks, toWire, validPath, withLevel } from './model';
 
 export interface FulgurEditorProps {
   /** Diagram to start with. Change `loadKey` to load a different one later. */
@@ -30,6 +30,8 @@ const HISTORY = 100;
 export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = [], onChange, onResult, compact = false }: FulgurEditorProps) {
   const [net, setNet] = useState<Netlist>(() => initial ?? emptyNetlist());
   const [selection, setSelection] = useState<Selection>(null);
+  /** ids of the subsystems we have opened, from the top; empty = the top diagram */
+  const [openPath, setOpenPath] = useState<string[]>([]);
   const [result, setResult] = useState<SimResult | null>(null);
   const [resultFor, setResultFor] = useState('');
   const [running, setRunning] = useState(false);
@@ -49,9 +51,24 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
   const [savedNet, setSavedNet] = useState(net);
   const dirty = net !== savedNet;
 
+  // Undo can delete a subsystem we are inside, so only the part of the path that still exists counts.
+  const path = useMemo(() => validPath(net, openPath), [net, openPath]);
+  /** The diagram being edited: the top level or the inside of a subsystem. The canvas and inspector work on this. */
+  const view = useMemo<Netlist>(() => {
+    let l: { blocks: Block[]; links: Link[] } = net;
+    for (const id of path) l = l.blocks.find((b) => b.id === id)!.system!;
+    return l === net ? net : { ...net, blocks: l.blocks, links: l.links };
+  }, [net, path]);
+  const pathNames = useMemo(() => {
+    const out: string[] = [];
+    let l: { blocks: Block[] } = net;
+    for (const id of path) { const b = l.blocks.find((x) => x.id === id)!; out.push(b.name || b.id); l = b.system!; }
+    return out;
+  }, [net, path]);
+
   const load = useCallback((n: Netlist) => {
     setNet(n); setSavedNet(n); committed.current = n; undo.current = []; redo.current = [];
-    setSelection(null); setResult(null); setViewKey((k) => k + 1);
+    setSelection(null); setOpenPath([]); setResult(null); setViewKey((k) => k + 1);
   }, []);
 
   useEffect(() => { if (initial && loadKey) load(initial); }, [loadKey]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -69,6 +86,14 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
     }
   }, []);
 
+  /** Apply a change made to the diagram being edited. */
+  const updateView = useCallback((n: Netlist, commit = true) => update(withLevel(net, path, n.blocks, n.links), commit), [net, path, update]);
+  const openBlock = (id: string) => {
+    if (view.blocks.find((b) => b.id === id)?.type !== 'subsystem') return;
+    setOpenPath([...path, id]); setSelection(null); setViewKey((k) => k + 1);
+  };
+  const goTo = (depth: number) => { setOpenPath(path.slice(0, depth)); setSelection(null); setViewKey((k) => k + 1); };
+
   const doUndo = () => {
     const prev = undo.current.pop();
     if (!prev) return;
@@ -83,40 +108,52 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
   };
 
   const addBlock = (type: string, x?: number, y?: number) => {
-    const taken = new Set(net.blocks.map((b) => b.id));
+    const taken = new Set(view.blocks.map((b) => b.id));
     let px = x, py = y;
     if (px === undefined || py === undefined) {
       // drop near the middle of what's visible, nudged so repeated clicks don't stack
       const c = center.current?.() ?? { x: 200, y: 150 };
-      const k = net.blocks.filter((o) => Math.abs(o.x - (c.x - 44)) < 60 && Math.abs(o.y - (c.y - 28)) < 60).length;
+      const k = view.blocks.filter((o) => Math.abs(o.x - (c.x - 44)) < 60 && Math.abs(o.y - (c.y - 28)) < 60).length;
       px = c.x - 44 + k * 24; py = c.y - 28 + k * 24;
     }
-    const b = makeBlock(type, px, py, taken);
-    update({ ...net, blocks: [...net.blocks, b] });
+    const b = makeBlock(type, px, py, taken, view.blocks);
+    updateView({ ...view, blocks: [...view.blocks, b] });
     setSelection({ kind: 'block', id: b.id });
   };
 
   const changeBlock = (id: string, patch: Partial<Block>) => {
-    const blocks = net.blocks.map((b) => (b.id === id ? { ...b, ...patch } : b));
-    update({ ...net, blocks, links: pruneLinks(blocks, net.links) });
+    const blocks = view.blocks.map((b) => (b.id === id ? { ...b, ...patch } : b));
+    updateView({ ...view, blocks, links: pruneLinks(blocks, view.links) });
   };
 
   const deleteSelection = () => {
     if (selection?.kind === 'block') {
-      update({ ...net, blocks: net.blocks.filter((b) => b.id !== selection.id), links: net.links.filter((l) => l.from.block !== selection.id && l.to.block !== selection.id) });
+      updateView({ ...view, blocks: view.blocks.filter((b) => b.id !== selection.id), links: view.links.filter((l) => l.from.block !== selection.id && l.to.block !== selection.id) });
     } else if (selection?.kind === 'link') {
-      update({ ...net, links: net.links.filter((_, i) => i !== selection.index) });
+      updateView({ ...view, links: view.links.filter((_, i) => i !== selection.index) });
     }
     setSelection(null);
   };
 
   const duplicate = () => {
     if (selection?.kind !== 'block') return;
-    const src = net.blocks.find((b) => b.id === selection.id);
+    const src = view.blocks.find((b) => b.id === selection.id);
     if (!src) return;
-    const b = { ...makeBlock(src.type, src.x + 24, src.y + 24, new Set(net.blocks.map((x) => x.id))), params: structuredClone(src.params) };
-    update({ ...net, blocks: [...net.blocks, b] });
+    const made = makeBlock(src.type, src.x + 24, src.y + 24, new Set(view.blocks.map((x) => x.id)), view.blocks);
+    // Inports and Outports keep the fresh port number from makeBlock; everything else copies the original
+    const b: Block = { ...made, params: src.type === 'inport' || src.type === 'outport' ? made.params : structuredClone(src.params), ...(src.system ? { system: structuredClone(src.system) } : {}) };
+    updateView({ ...view, blocks: [...view.blocks, b] });
     setSelection({ kind: 'block', id: b.id });
+  };
+
+  /** Wrap the selected block in a new subsystem; wires that crossed its edge go through Inports and Outports. */
+  const group = () => {
+    if (selection?.kind !== 'block') return;
+    const src = view.blocks.find((b) => b.id === selection.id);
+    if (!src || src.type === 'inport' || src.type === 'outport') return;
+    const g = groupIntoSubsystem(view, new Set([selection.id]));
+    updateView({ ...view, ...g.level });
+    setSelection({ kind: 'block', id: g.id });
   };
 
   const wireKey = JSON.stringify(toWire(net));
@@ -140,8 +177,9 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
 
   // keyboard shortcuts (ignored while typing in a field)
   const runRef = useRef(run); runRef.current = run;
-  const keysRef = useRef({ deleteSelection, doUndo, doRedo, duplicate });
-  keysRef.current = { deleteSelection, doUndo, doRedo, duplicate };
+  const openSelected = () => { if (selection?.kind === 'block') openBlock(selection.id); };
+  const keysRef = useRef({ deleteSelection, doUndo, doRedo, duplicate, openSelected, goUp: () => goTo(path.length - 1) });
+  keysRef.current = { deleteSelection, doUndo, doRedo, duplicate, openSelected, goUp: () => goTo(path.length - 1) };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
@@ -153,6 +191,8 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
       else if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); keysRef.current.doUndo(); }
       else if (mod && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) { e.preventDefault(); keysRef.current.doRedo(); }
       else if (mod && e.key.toLowerCase() === 'd') { e.preventDefault(); keysRef.current.duplicate(); }
+      else if (e.key === 'Enter') keysRef.current.openSelected();
+      else if (e.altKey && e.key === 'ArrowUp') { e.preventDefault(); keysRef.current.goUp(); }
       else if (e.key === 'Escape') setSelection(null);
     };
     window.addEventListener('keydown', onKey);
@@ -164,20 +204,28 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
     // the server speaks in ids; show the names people see on the canvas
     return raw.map((i) => {
       let message = i.message;
-      for (const b of net.blocks) if (b.name && message.includes(`"${b.id}"`)) message = message.split(`"${b.id}"`).join(`"${b.name}"`);
+      for (const b of view.blocks) if (b.name && message.includes(`"${b.id}"`)) message = message.split(`"${b.id}"`).join(`"${b.name}"`);
       return { ...i, message };
     });
-  }, [result, net.blocks]);
-  const errorBlocks = useMemo(() => new Set(issues.map((i) => i.block).filter(Boolean) as string[]), [issues]);
+  }, [result, view.blocks]);
+  // the server names blocks by id path ("fwd/pid"): show a problem on this level's block, or on the subsystem that contains it
+  const errorBlocks = useMemo(() => {
+    const prefix = path.length ? `${path.join('/')}/` : '';
+    const out = new Set<string>();
+    for (const i of issues) if (i.block?.startsWith(prefix)) out.add(i.block.slice(prefix.length).split('/')[0]);
+    return out;
+  }, [issues, path]);
   const stale = result?.ok && resultFor !== wireKey;
 
   /** Name each scope trace after the block that feeds it. */
-  const traceNames = (scopeId: string) => {
-    const sc = net.blocks.find((b) => b.id === scopeId);
-    const n = sc ? ports(sc).inputs : 1;
+  const traceNames = (scopePath: string) => {
+    const found = findByPath(net, scopePath);
+    const scopeId = scopePath.split('/').pop()!;
+    const lvl = found?.level ?? net;
+    const n = found ? ports(found.block).inputs : 1;
     return Array.from({ length: n }, (_, i) => {
-      const l = net.links.find((l) => l.to.block === scopeId && l.to.port === i);
-      const src = l && net.blocks.find((b) => b.id === l.from.block);
+      const l = lvl.links.find((l) => l.to.block === scopeId && l.to.port === i);
+      const src = l && lvl.blocks.find((b) => b.id === l.from.block);
       if (!src) return `Input ${i + 1}`;
       return (src.name || src.id) + (ports(src).outputs > 1 ? ` (out ${l!.from.port + 1})` : '');
     });
@@ -196,18 +244,21 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
     try {
       const n = JSON.parse(await f.text()) as Netlist;
       if (!Array.isArray(n.blocks) || !n.settings) throw new Error('not a fulgurlab model');
-      n.blocks = n.blocks.filter((b) => BLOCK_MAP[b.type]).map((b) => ({ ...b, x: snap(b.x ?? 0), y: snap(b.y ?? 0), params: { ...b.params } }));
-      n.links ??= [];
-      load({ ...n, version: 1 });
+      load({ ...n, ...normalizeLevel(n), version: 1 });
     } catch (e) {
       setResult({ ok: false, error: `Couldn't open ${f.name}: ${(e as Error).message}` });
     }
   };
 
+  /** "Forward path / Scope" for a scope inside a subsystem, the block's name for a top-level one */
+  const scopeTitle = (scopePath: string) => {
+    const f = findByPath(net, scopePath);
+    return f ? [...f.names, f.block.name || f.block.id].join(' / ') : scopePath;
+  };
   const hasScopes = !!result?.ok && Object.keys(result.scopes).length > 0;
   const exportCsv = () => {
     if (!result?.ok) return;
-    for (const [id, tr] of Object.entries(result.scopes)) downloadCsv(net.blocks.find((x) => x.id === id)?.name || id, traceNames(id), tr);
+    for (const [id, tr] of Object.entries(result.scopes)) downloadCsv(scopeTitle(id), traceNames(id), tr);
   };
   const canRun = !running && net.blocks.length > 0;
   const chooseFile = () => fileInput.current?.click();
@@ -224,11 +275,14 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
       { label: 'Redo', shortcut: 'Ctrl+Y', disabled: !redo.current.length, onSelect: doRedo },
       { label: 'Duplicate', shortcut: 'Ctrl+D', disabled: selection?.kind !== 'block', onSelect: duplicate },
       { label: 'Delete', shortcut: 'Del', disabled: !selection, onSelect: deleteSelection },
+      { label: 'Open subsystem', shortcut: 'Enter', disabled: !(selection?.kind === 'block' && view.blocks.find((b) => b.id === selection.id)?.type === 'subsystem'), onSelect: openSelected },
+      { label: 'Group block into subsystem', disabled: !(selection?.kind === 'block' && !['inport', 'outport'].includes(view.blocks.find((b) => b.id === selection.id)?.type ?? 'inport')), onSelect: group },
     ] },
     { label: 'View', mnemonic: 0, items: [
       { label: 'Zoom in', onSelect: () => canvasControls.current?.zoomIn() },
       { label: 'Zoom out', onSelect: () => canvasControls.current?.zoomOut() },
       { label: 'Fit', onSelect: () => canvasControls.current?.fit() },
+      { label: 'Go to parent diagram', shortcut: 'Alt+Up', disabled: !path.length, onSelect: () => goTo(path.length - 1) },
       { label: 'Library', checked: showLibrary, onSelect: () => setShowLibrary((v) => !v) },
       { label: scopePopped ? 'Dock Scope' : 'Pop out Scope', onSelect: () => setScopePopped((v) => !v) },
     ] },
@@ -301,27 +355,38 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
         {tb('Export CSV', <I.IconDownload />, exportCsv, { disabled: !hasScopes })}
       </div>
 
-      {!compact && (
+      {(!compact || path.length > 0) && (
         <>
-          <div className="tabstrip" role="tablist" aria-label="Open models">
+          {!compact && <div className="tabstrip" role="tablist" aria-label="Open models">
             <div className="tab is-active" role="tab" aria-selected="true" tabIndex={0}>{net.name}{dirty ? ' *' : ''}</div>
-          </div>
+          </div>}
           <div className="pathbar">
             <button type="button" className="tb tb-small" aria-label={showLibrary ? 'Hide library' : 'Show library'} title={showLibrary ? 'Hide library' : 'Show library'} onClick={() => setShowLibrary((v) => !v)}>
               <span className={showLibrary ? '' : 'flip'}><I.IconChevronLeft /></span>
             </button>
-            <div className="path"><I.BrandMark size={14} /><span>{net.name}</span></div>
+            <nav className="path" aria-label="Diagram path">
+              <I.BrandMark size={14} />
+              {[net.name ?? 'Model', ...pathNames].map((name, i, all) => (
+                <span key={i} className="crumb">
+                  {i > 0 && <span className="crumb-sep" aria-hidden>›</span>}
+                  {i < all.length - 1
+                    ? <button type="button" className="crumb-link" onClick={() => goTo(i)} title={`Go to ${name}`}>{name}</button>
+                    : <span aria-current="location">{name}</span>}
+                </span>
+              ))}
+            </nav>
           </div>
         </>
       )}
 
       <div className={`workspace ${showLibrary ? '' : 'no-library'}`}>
-        {showLibrary && <Palette onAdd={(t) => addBlock(t)} />}
+        {showLibrary && <Palette onAdd={(t) => addBlock(t)} insideSubsystem={path.length > 0} />}
         <Canvas
-          net={net}
+          net={view}
           selection={selection}
           errorBlocks={errorBlocks}
-          onChange={update}
+          onChange={updateView}
+          onOpen={openBlock}
           onSelect={setSelection}
           onDropType={(t, x, y) => addBlock(t, x, y)}
           loadKey={viewKey}
@@ -329,7 +394,7 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
           controlsRef={canvasControls}
           onZoom={setZoom}
         />
-        <Inspector net={net} selection={selection} issues={issues} onBlockChange={changeBlock} onSettings={(p) => update({ ...net, ...p })} onDelete={deleteSelection} onClose={() => setSelection(null)} />
+        <Inspector net={view} selection={selection} issues={issues} onBlockChange={changeBlock} onSettings={(p) => update({ ...net, ...p })} onDelete={deleteSelection} onClose={() => setSelection(null)} />
       </div>
 
       {(!result || !result.ok || Object.keys(result.scopes).length === 0) && (
@@ -348,7 +413,7 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
       )}
       {result?.ok && Object.keys(result.scopes).length > 0 && (
         <ScopePanel
-          scopes={Object.entries(result.scopes).map(([id, trace]) => ({ id, title: net.blocks.find((x) => x.id === id)?.name || id, names: traceNames(id), trace }))}
+          scopes={Object.entries(result.scopes).map(([id, trace]) => ({ id, title: scopeTitle(id), names: traceNames(id), trace }))}
           tf={net.settings.tf}
           popped={scopePopped}
           onTogglePop={() => setScopePopped((v) => !v)}

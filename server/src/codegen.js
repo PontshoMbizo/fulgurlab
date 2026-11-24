@@ -16,6 +16,7 @@
 
 import { trimPoly } from './netlist.js';
 import { parseExpr, emitExpr } from './expr.js';
+import { flatten } from './flatten.js';
 
 /** Format a validated finite number for Scilab. */
 export function fmt(x) {
@@ -130,7 +131,8 @@ function lower(b, settings) {
  * @param {string} outDir absolute directory (server-chosen) for results
  * @returns {{script:string, scopes:{block:string,var:string,file:string,inputs:number}[]}}
  */
-export function generate(net, outDir) {
+export function generate(netIn, outDir) {
+  const net = flatten(netIn);
   if (!/^[A-Za-z0-9_\/.\-]+$/.test(outDir)) throw new Error('unsafe output directory');
   const { settings } = net;
   const L = []; // script lines

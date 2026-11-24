@@ -4,6 +4,7 @@
 // stretched to the block's real size with non-scaling strokes; text (fractions,
 // signs, values) is laid out in real pixels so it never distorts.
 import type { Block } from './types';
+import { systemPorts } from '../../../shared/catalog.js';
 import { blockSize, num, polyText, ports } from './model';
 
 const n = (b: Block, k: string) => b.params[k] as number;
@@ -156,6 +157,19 @@ export function BlockGlyph({ block }: { block: Block }) {
       </Design>
     ); break;
     case 'userFn': body = <Center w={w} h={h} size={h * 0.4} italic>f(u)</Center>; break;
+    case 'inport': case 'outport': body = <Center w={w} h={h} size={14}>{String(b.params.index)}</Center>; break;
+    case 'subsystem': {
+      // the port names, each beside its port
+      const { inports, outports } = systemPorts(b.system);
+      const label = (p: { id: string; name?: string }) => (p as { name?: string }).name || p.id;
+      body = (
+        <g className="glyph-math" fontSize={10}>
+          {inports.map((p, i) => <text key={`i${i}`} x={8} y={(h * (i + 1)) / (inports.length + 1) + 3.5} textAnchor="start">{label(p)}</text>)}
+          {outports.map((p, i) => <text key={`o${i}`} x={w - 8} y={(h * (i + 1)) / (outports.length + 1) + 3.5} textAnchor="end">{label(p)}</text>)}
+        </g>
+      );
+      break;
+    }
     default: body = <Center w={w} h={h} size={11}>{b.type}</Center>;
   }
   return (

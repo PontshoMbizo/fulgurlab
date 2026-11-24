@@ -90,5 +90,5 @@ it publicly.
   "run", tol)` per quantum, writing inputs into `sim.opar` and reading
   `state.outtb`. This was prototyped at 0.04 ms per quantum inside Scilab; the open
   problem is the IPC with a long-lived process.
-- **More blocks:** state-space, signal generator, switch, MATLAB-style function
-  (needs a safe expression whitelist), subsystems.
+- **More blocks:** a signal generator, MIMO state-space, and a user function with a
+  time variable. (State-space, switch, the whitelisted user function and subsystems are done.)

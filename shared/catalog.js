@@ -200,6 +200,28 @@ export const BLOCKS = [
     inputs: fixed(1), outputs: fixed(1),
   },
 
+  // ------------------------------------------------------- Subsystems
+  // A subsystem carries its own nested diagram (`system`, not a parameter). Its ports are
+  // the Inport and Outport blocks inside it, ordered by their `index`; see systemPorts().
+  {
+    type: 'subsystem', label: 'Subsystem', category: 'Subsystems',
+    description: 'A diagram inside a block. Its inputs and outputs are the Inport and Outport blocks inside it. Double-click to open.',
+    params: [],
+    inputs: fixed(0), outputs: fixed(0),
+  },
+  {
+    type: 'inport', label: 'Inport', category: 'Subsystems',
+    description: 'An input of the subsystem it sits in. Inputs are numbered by this index, lowest first.',
+    params: [{ key: 'index', label: 'Port number', kind: 'int', default: 1, min: 1, max: 16 }],
+    inputs: fixed(0), outputs: fixed(1),
+  },
+  {
+    type: 'outport', label: 'Outport', category: 'Subsystems',
+    description: 'An output of the subsystem it sits in. Outputs are numbered by this index, lowest first.',
+    params: [{ key: 'index', label: 'Port number', kind: 'int', default: 1, min: 1, max: 16 }],
+    inputs: fixed(1), outputs: fixed(0),
+  },
+
   // ------------------------------------------------------------ Sinks
   {
     type: 'scope', label: 'Scope', category: 'Sinks',
@@ -220,10 +242,26 @@ export function defaultParams(type) {
   return Object.fromEntries(def.params.map((p) => [p.key, structuredClone(p.default)]));
 }
 
-/** Port counts for a block instance (after defaults are merged). */
-export function portCounts(type, params) {
+/**
+ * The Inport and Outport blocks of a nested diagram, each sorted by index.
+ * Port k of the subsystem is the k-th entry (indices may have gaps).
+ */
+export function systemPorts(system) {
+  const blocks = Array.isArray(system?.blocks) ? system.blocks : [];
+  const pick = (type) => blocks
+    .filter((b) => b && b.type === type)
+    .sort((a, b) => (Number(a.params?.index) || 1) - (Number(b.params?.index) || 1));
+  return { inports: pick('inport'), outports: pick('outport') };
+}
+
+/** Port counts for a block instance (after defaults are merged). `system` is the nested diagram of a subsystem. */
+export function portCounts(type, params, system) {
   const def = BLOCK_MAP[type];
   const p = { ...defaultParams(type), ...(params || {}) };
+  if (type === 'subsystem') {
+    const { inports, outports } = systemPorts(system);
+    return { inputs: inports.length, outputs: outports.length };
+  }
   return { inputs: def.inputs(p), outputs: def.outputs(p) };
 }
 
@@ -231,6 +269,7 @@ export function portCounts(type, params) {
 export const LIMITS = {
   maxBlocks: 200,
   maxLinks: 400,
+  maxDepth: 4, // levels of subsystems inside subsystems
   maxVector: 16,
   maxTf: 10000,
   minDt: 1e-6,

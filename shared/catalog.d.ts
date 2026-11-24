@@ -24,8 +24,11 @@ export const BLOCKS: BlockDef[];
 export const BLOCK_MAP: Record<string, BlockDef>;
 export const CATEGORIES: string[];
 export function defaultParams(type: string): Params;
-export function portCounts(type: string, params?: Params): { inputs: number; outputs: number };
+export interface NestedBlock { id: string; type: string; params?: Params; system?: NestedSystem }
+export interface NestedSystem { blocks: NestedBlock[]; links: unknown[] }
+export function systemPorts(system?: { blocks?: NestedBlock[] } | null): { inports: NestedBlock[]; outports: NestedBlock[] };
+export function portCounts(type: string, params?: Params, system?: { blocks?: NestedBlock[] } | null): { inputs: number; outputs: number };
 export const LIMITS: {
-  maxBlocks: number; maxLinks: number; maxVector: number; maxTf: number; minDt: number;
+  maxBlocks: number; maxLinks: number; maxDepth: number; maxVector: number; maxTf: number; minDt: number;
   maxSamplesPerScope: number; maxTotalSamples: number;
 };

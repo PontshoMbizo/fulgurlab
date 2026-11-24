@@ -11,6 +11,8 @@ interface Props {
   /** commit=false while dragging (no undo entry), true when the gesture ends */
   onChange: (net: Netlist, commit: boolean) => void;
   onSelect: (s: Selection) => void;
+  /** double-click on a block (subsystems open) */
+  onOpen?: (id: string) => void;
   onDropType: (type: string, x: number, y: number) => void;
   /** changes whenever a new diagram is loaded, to re-fit the view */
   loadKey: number;
@@ -29,7 +31,7 @@ type Drag =
   | { kind: 'wire'; from: PortRef; x: number; y: number }
   | { kind: 'pan'; sx: number; sy: number; ox: number; oy: number };
 
-export function Canvas({ net, selection, errorBlocks, onChange, onSelect, onDropType, loadKey, centerRef, controlsRef, onZoom }: Props) {
+export function Canvas({ net, selection, errorBlocks, onChange, onSelect, onOpen, onDropType, loadKey, centerRef, controlsRef, onZoom }: Props) {
   const svg = useRef<SVGSVGElement>(null);
   const [view, setView] = useState({ x: 0, y: 0, k: 1 });
   const [drag, setDrag] = useState<Drag | null>(null);
@@ -229,7 +231,7 @@ export function Canvas({ net, selection, errorBlocks, onChange, onSelect, onDrop
             const sel = selection?.kind === 'block' && selection.id === b.id;
             return (
               <g key={b.id} transform={`translate(${b.x},${b.y})`} className={`block ${sel ? 'is-selected' : ''} ${errorBlocks.has(b.id) ? 'has-error' : ''}`}>
-                <g onPointerDown={(e) => startMove(e, b)} className="block-body">
+                <g onPointerDown={(e) => startMove(e, b)} onDoubleClick={() => onOpen?.(b.id)} className="block-body">
                   <BlockGlyph block={b} />
                 </g>
                 {sel && (

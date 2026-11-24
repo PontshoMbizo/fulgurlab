@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { BLOCKS, CATEGORIES, defaultParams } from '../../../shared/catalog.js';
 import { BlockGlyph } from './BlockGlyph';
-import { blockSize, ports } from './model';
+import { blockSize, defaultSystem, ports } from './model';
 
 /** Library Browser: a collapsible tree of blocks. Drag onto the canvas, or click/Enter to add one. */
-export function Palette({ onAdd }: { onAdd: (type: string) => void }) {
+export function Palette({ onAdd, insideSubsystem = false }: { onAdd: (type: string) => void; insideSubsystem?: boolean }) {
   const [q, setQ] = useState('');
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(['Discrete', 'Sinks']));
   const query = q.trim().toLowerCase();
@@ -18,7 +18,7 @@ export function Palette({ onAdd }: { onAdd: (type: string) => void }) {
       </div>
       <div className="palette-tree">
         {CATEGORIES.map((cat) => {
-          const items = BLOCKS.filter((b) => b.category === cat && (!query || match(b.label) || match(b.description) || match(cat)));
+          const items = BLOCKS.filter((b) => b.category === cat && (insideSubsystem || (b.type !== 'inport' && b.type !== 'outport')) && (!query || match(b.label) || match(b.description) || match(cat)));
           if (!items.length) return null;
           const open = !!query || !collapsed.has(cat);
           return (
@@ -56,7 +56,7 @@ export function Palette({ onAdd }: { onAdd: (type: string) => void }) {
 
 /** The block icon in the design's 64x48 box: body at x 8.5-55.5, y 4.5-43.5, chevrons outside. */
 function LibraryIcon({ type }: { type: string }) {
-  const block = { id: 'p', type, params: defaultParams(type), x: 0, y: 0 };
+  const block = { id: 'p', type, params: defaultParams(type), x: 0, y: 0, ...(type === 'subsystem' ? { system: defaultSystem() } : {}) };
   const { w, h } = blockSize(block);
   const s = Math.min(47 / w, 39 / h);
   const { inputs, outputs } = ports(block);
