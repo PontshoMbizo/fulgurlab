@@ -116,3 +116,50 @@ test('fan-out inserts a split block', () => {
   assert.match(script, /SPLIT_f\("define"\)/);
   assert.match(script, /MUX\("define"\)/);
 });
+
+// ---- state-space, switch, user function
+const withBlock = (block, extra = {}) => {
+  const net = base();
+  net.blocks.splice(1, 0, { id: 'b', ...block });
+  const n = portCounts(block.type, block.params).inputs;
+  net.links = [{ from: { block: 'a', port: 0 }, to: { block: 'b', port: 0 } }, { from: { block: 'b', port: 0 }, to: { block: 's', port: 0 } }];
+  for (let i = 1; i < n; i++) net.links.push({ from: { block: 'a', port: 0 }, to: { block: 'b', port: i } });
+  return Object.assign(net, extra);
+};
+
+test('state-space dimensions are checked', () => {
+  assert.deepEqual(issuesOf(withBlock({ type: 'stateSpace', params: {} })), []);
+  const ok = { A: [[0, 1], [-2, -3]], B: [[0], [1]], C: [[1, 0]], D: [[0]], x0: [0, 0] };
+  assert.deepEqual(issuesOf(withBlock({ type: 'stateSpace', params: ok })), []);
+  assert.match(issuesOf(withBlock({ type: 'stateSpace', params: { ...ok, A: [[0, 1]] } })).join(), /A must be square/);
+  assert.match(issuesOf(withBlock({ type: 'stateSpace', params: { ...ok, B: [[0, 1]] } })).join(), /B must be 2×1/);
+  assert.match(issuesOf(withBlock({ type: 'stateSpace', params: { ...ok, C: [[1], [0]] } })).join(), /C must be 1×2/);
+  assert.match(issuesOf(withBlock({ type: 'stateSpace', params: { ...ok, x0: [0] } })).join(), /initial state needs 2/);
+  assert.match(issuesOf(withBlock({ type: 'stateSpace', params: { ...ok, A: [[0, 1], [1]] } })).join(), /rectangular matrix/);
+  assert.match(issuesOf(withBlock({ type: 'stateSpace', params: { ...ok, A: [[0, 'x'], [1, 1]] } })).join(), /finite numbers/);
+  assert.match(issuesOf(withBlock({ type: 'stateSpace', params: { ...ok, D: [[Infinity]] } })).join(), /finite numbers/);
+});
+
+test('switch and user function accept their defaults; the switch rule is bounded', () => {
+  assert.deepEqual(issuesOf(withBlock({ type: 'switch', params: {} })), []);
+  assert.deepEqual(issuesOf(withBlock({ type: 'userFn', params: {} })), []);
+  assert.ok(issuesOf(withBlock({ type: 'switch', params: { rule: 3 } })).length);
+});
+
+test('user function expressions are whitelisted', () => {
+  const bad = ['u1; unix_g("id")', 'u1 `x`', 'u2', 'foo(u1)', 'u1 u1', '1e999', 'u1 +', '(u1', 'u1)', 'exec("x")', '"a"', "u1'", 'u1==1', 'u1\nu1', 'sin', '', ' ', 'x'.repeat(300), '('.repeat(40) + 'u1' + ')'.repeat(40)];
+  for (const expr of bad) {
+    assert.ok(issuesOf(withBlock({ type: 'userFn', params: { expr, inputs: 1 } })).length > 0, `should reject ${JSON.stringify(expr).slice(0, 40)}`);
+  }
+  for (const expr of ['u1', '-u1^2', '2*u1 + 3', 'sin(u1)/2', 'abs(u1)^0.5', '1.5e-3*u1', '.5*u1', 'exp(-u1) - -1']) {
+    assert.deepEqual(issuesOf(withBlock({ type: 'userFn', params: { expr, inputs: 1 } })), [], `should accept ${expr}`);
+  }
+  assert.match(issuesOf(withBlock({ type: 'userFn', params: { expr: 'u1 + u3', inputs: 2 } })).join(), /u3 is not an input/);
+});
+
+test('generated script carries only the re-emitted expression and numbers', () => {
+  const net = withBlock({ type: 'userFn', params: { expr: '  2 *  U_is_not_allowed'.replace('U_is_not_allowed', 'u1') + ' + sin( u1 )', inputs: 1 } });
+  const { script } = generate(validateNetlist(net), '/tmp/out');
+  assert.match(script, /\(\(2\*u1\)\+sin\(u1\)\)/);
+  assert.ok(!script.includes('  2 *  u1'));
+});

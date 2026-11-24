@@ -6,6 +6,7 @@
 // and ids never reach the generated script (codegen uses its own indices).
 
 import { BLOCK_MAP, LIMITS, defaultParams, portCounts } from '../../shared/catalog.js';
+import { parseExpr, ExprError } from './expr.js';
 
 export class NetlistError extends Error {
   /** @param {{path:string,message:string,block?:string}[]} issues */
@@ -40,6 +41,16 @@ function checkParam(def, value, path, issues) {
       }
       return value;
     }
+    case 'matrix':
+      if (!Array.isArray(value) || value.length < 1 || value.length > LIMITS.maxVector
+        || !value.every((r) => Array.isArray(r) && r.length >= 1 && r.length <= LIMITS.maxVector && r.length === value[0].length && r.every(isNum))) {
+        issues.push({ path, message: `${def.label} must be a rectangular matrix of finite numbers, at most ${LIMITS.maxVector}×${LIMITS.maxVector}` });
+      }
+      return value;
+    case 'expr':
+      // syntax is checked together with the input count in the block-specific checks
+      if (typeof value !== 'string') issues.push({ path, message: `${def.label} must be text` });
+      return value;
     default:
       issues.push({ path, message: `unsupported parameter kind ${def.kind}` });
       return value;
@@ -107,6 +118,21 @@ export function validateNetlist(net) {
     if (['zoh', 'unitDelay', 'discreteTF'].includes(b.type) && isNum(params.ts) && params.ts <= 0) blockIssue('sample time must be positive');
     if (b.type === 'delay' && isNum(params.T) && params.T <= 0) blockIssue('delay must be positive');
     if (b.type === 'saturation' && isNum(params.upper) && isNum(params.lower) && params.lower > params.upper) blockIssue('lower limit must not exceed upper limit');
+    if (b.type === 'stateSpace' && ['A', 'B', 'C', 'D'].every((k) => Array.isArray(params[k]) && !issues.some((x) => x.block === b.id && x.path.endsWith(`.${k}`)))) {
+      const n = params.A.length;
+      const dims = (m) => `${m.length}×${m[0].length}`;
+      if (params.A[0].length !== n) blockIssue(`A must be square (it is ${dims(params.A)})`);
+      else if (params.B.length !== n || params.B[0].length !== 1) blockIssue(`B must be ${n}×1 (it is ${dims(params.B)})`);
+      else if (params.C.length !== 1 || params.C[0].length !== n) blockIssue(`C must be 1×${n} (it is ${dims(params.C)})`);
+      else if (params.D.length !== 1 || params.D[0].length !== 1) blockIssue(`D must be 1×1 (it is ${dims(params.D)})`);
+      else if (!Array.isArray(params.x0) || params.x0.length !== n) blockIssue(`initial state needs ${n} value${n === 1 ? '' : 's'}`);
+    }
+    if (b.type === 'userFn' && typeof params.expr === 'string' && Number.isInteger(params.inputs)) {
+      try { parseExpr(params.expr, params.inputs); } catch (e) {
+        if (!(e instanceof ExprError)) throw e;
+        issues.push({ path: `${path}.params.expr`, message: e.message, block: b.id });
+      }
+    }
     if (b.type === 'pid' && isNum(params.n) && params.n <= 0) blockIssue('filter N must be positive');
 
     let counts = { inputs: 0, outputs: 0 };

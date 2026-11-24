@@ -142,6 +142,20 @@ export function BlockGlyph({ block }: { block: Block }) {
     case 'pid': body = (
       <text x={w / 2} y={h / 2 + h * 0.12} textAnchor="middle" fontSize={h * 0.36} className="glyph-math">PID(<tspan fontStyle="italic">s</tspan>)</text>
     ); break;
+    case 'stateSpace': body = (
+      <g className="glyph-math" fontSize={h * 0.2} fontStyle="italic">
+        <text x={w / 2} y={h / 2 - h * 0.06} textAnchor="middle">ẋ = Ax + Bu</text>
+        <text x={w / 2} y={h / 2 + h * 0.24} textAnchor="middle">y = Cx + Du</text>
+      </g>
+    ); break;
+    case 'switch': body = (
+      <Design w={w} h={h}>
+        <Curve d="M13,12 H27 M13,36 H27 M44,24 H51" />
+        <Curve d={n(b, 'rule') === 2 ? 'M44,24 L28,36' : 'M44,24 L28,12'} />
+        <path d="M13,24 H36 V28" className="glyph-thin" strokeDasharray="2 2" />
+      </Design>
+    ); break;
+    case 'userFn': body = <Center w={w} h={h} size={h * 0.4} italic>f(u)</Center>; break;
     default: body = <Center w={w} h={h} size={11}>{b.type}</Center>;
   }
   return (

@@ -9,8 +9,10 @@
 //   vector  - array of finite numbers (polynomial coefficients, highest power first)
 //   signs   - string of '+'/'-' (Sum) or '*'/'/' (Product); sets the input count
 //   int     - integer within [min, max]
+//   matrix  - array of rows of finite numbers (state-space A, B, C, D)
+//   expr    - expression text in the small safe language of server/src/expr.js (u1..un, numbers, + - * / ^, sin cos ...)
 
-/** @typedef {{key:string,label:string,kind:'number'|'vector'|'signs'|'int',default:any,min?:number,max?:number,alphabet?:string,hint?:string}} Param */
+/** @typedef {{key:string,label:string,kind:'number'|'vector'|'signs'|'int'|'matrix'|'expr',default:any,min?:number,max?:number,alphabet?:string,hint?:string}} Param */
 /** @typedef {{type:string,label:string,category:string,params:Param[],inputs:(p:object)=>number,outputs:(p:object)=>number,description:string}} BlockDef */
 
 const fixed = (n) => () => n;
@@ -95,6 +97,26 @@ export const BLOCKS = [
     ],
     inputs: fixed(1), outputs: fixed(1),
   },
+  {
+    type: 'userFn', label: 'User Function', category: 'Math',
+    description: 'y = f(u1, …, un) for an expression such as 2*u1 + sin(u2)^2. Allowed: numbers, u1..u4, + - * / ^ and sin cos tan exp log sqrt abs.',
+    params: [
+      { key: 'expr', label: 'Expression', kind: 'expr', default: 'u1', hint: 'e.g. u1*abs(u2)' },
+      { key: 'inputs', label: 'Number of inputs', kind: 'int', default: 1, min: 1, max: 4 },
+    ],
+    inputs: (p) => Number(p.inputs ?? 1), outputs: fixed(1),
+  },
+
+  // ------------------------------------------------------- Routing
+  {
+    type: 'switch', label: 'Switch', category: 'Routing',
+    description: 'Passes input 1 when the control input (input 2) meets the criterion against the threshold, otherwise input 3.',
+    params: [
+      { key: 'rule', label: 'Pass input 1 when control', kind: 'int', default: 0, min: 0, max: 2, hint: '0: ≥ threshold · 1: > threshold · 2: ≠ threshold' },
+      { key: 'threshold', label: 'Threshold', kind: 'number', default: 0 },
+    ],
+    inputs: fixed(3), outputs: fixed(1),
+  },
 
   // ------------------------------------------------------- Continuous
   {
@@ -115,6 +137,18 @@ export const BLOCKS = [
     params: [
       { key: 'num', label: 'Numerator', kind: 'vector', default: [1] },
       { key: 'den', label: 'Denominator', kind: 'vector', default: [1, 1] },
+    ],
+    inputs: fixed(1), outputs: fixed(1),
+  },
+  {
+    type: 'stateSpace', label: 'State-Space', category: 'Continuous',
+    description: 'ẋ = Ax + Bu, y = Cx + Du for one input and one output. A is n×n, B is n×1, C is 1×n, D is 1×1.',
+    params: [
+      { key: 'A', label: 'A', kind: 'matrix', default: [[-1]], hint: 'rows separated by ;, e.g. 0 1; -2 -3' },
+      { key: 'B', label: 'B', kind: 'matrix', default: [[1]] },
+      { key: 'C', label: 'C', kind: 'matrix', default: [[1]] },
+      { key: 'D', label: 'D', kind: 'matrix', default: [[0]] },
+      { key: 'x0', label: 'Initial state', kind: 'vector', default: [0] },
     ],
     inputs: fixed(1), outputs: fixed(1),
   },

@@ -1,0 +1,187 @@
+{
+  "version": 1,
+  "name": "State-space, switch and user function",
+  "description": "A lightly damped second-order plant written as state-space. The switch holds the output at 0.8 or above (it passes the plant while the plant is at least 0.8, otherwise a constant 0.8). A user function computes the squared error (1 - y)^2.",
+  "settings": {
+    "tf": 8,
+    "dt": 0.01
+  },
+  "blocks": [
+    {
+      "id": "step",
+      "type": "step",
+      "params": {
+        "time": 0
+      },
+      "x": 48,
+      "y": 128,
+      "name": "Step"
+    },
+    {
+      "id": "plant",
+      "type": "stateSpace",
+      "params": {
+        "A": [
+          [
+            0,
+            1
+          ],
+          [
+            -4,
+            -1
+          ]
+        ],
+        "B": [
+          [
+            0
+          ],
+          [
+            4
+          ]
+        ],
+        "C": [
+          [
+            1,
+            0
+          ]
+        ],
+        "D": [
+          [
+            0
+          ]
+        ],
+        "x0": [
+          0,
+          0
+        ]
+      },
+      "x": 168,
+      "y": 120,
+      "name": "Plant"
+    },
+    {
+      "id": "floor",
+      "type": "constant",
+      "params": {
+        "value": 0.8
+      },
+      "x": 168,
+      "y": 256,
+      "name": "Floor"
+    },
+    {
+      "id": "sw",
+      "type": "switch",
+      "params": {
+        "rule": 0,
+        "threshold": 0.8
+      },
+      "x": 344,
+      "y": 200,
+      "name": "Switch"
+    },
+    {
+      "id": "err",
+      "type": "userFn",
+      "params": {
+        "expr": "(1 - u1)^2",
+        "inputs": 1
+      },
+      "x": 344,
+      "y": 328,
+      "name": "Squared error"
+    },
+    {
+      "id": "sc",
+      "type": "scope",
+      "params": {
+        "inputs": 3
+      },
+      "x": 520,
+      "y": 168,
+      "name": "Scope"
+    }
+  ],
+  "links": [
+    {
+      "from": {
+        "block": "step",
+        "port": 0
+      },
+      "to": {
+        "block": "plant",
+        "port": 0
+      }
+    },
+    {
+      "from": {
+        "block": "plant",
+        "port": 0
+      },
+      "to": {
+        "block": "sw",
+        "port": 0
+      }
+    },
+    {
+      "from": {
+        "block": "plant",
+        "port": 0
+      },
+      "to": {
+        "block": "sw",
+        "port": 1
+      }
+    },
+    {
+      "from": {
+        "block": "floor",
+        "port": 0
+      },
+      "to": {
+        "block": "sw",
+        "port": 2
+      }
+    },
+    {
+      "from": {
+        "block": "plant",
+        "port": 0
+      },
+      "to": {
+        "block": "err",
+        "port": 0
+      }
+    },
+    {
+      "from": {
+        "block": "plant",
+        "port": 0
+      },
+      "to": {
+        "block": "sc",
+        "port": 0
+      }
+    },
+    {
+      "from": {
+        "block": "sw",
+        "port": 0
+      },
+      "to": {
+        "block": "sc",
+        "port": 1
+      }
+    },
+    {
+      "from": {
+        "block": "err",
+        "port": 0
+      },
+      "to": {
+        "block": "sc",
+        "port": 2
+      }
+    }
+  ]
+}

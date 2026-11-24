@@ -48,7 +48,7 @@ Measured on 6 November 2026 with Scilab 2024.0 (Ubuntu 24.04 package) and Node 2
 | Area | Result |
 |---|---|
 | Tests | 16 tests pass in about 6 s: 12 for validation and code generation, 4 that run real Scilab and compare against analytic answers |
-| Block coverage | All 19 block types simulate and match their analytic values, for example the transfer function 2/(s + 2) within 1e-3 of 1 − e^(−3) at t = 1.5 s |
+| Block coverage | All 22 block types simulate and match their analytic values, for example the transfer function 2/(s + 2) within 1e-3 of 1 − e^(−3) at t = 1.5 s |
 | Accuracy | First-order step response: largest error 1.25e-4 against 1 − e^(−t) over 501 samples |
 | Run time, small diagrams | 0.22 to 0.24 s median per run for the four examples (five runs each, end to end over HTTP), almost all of it Scilab start-up |
 | Run time, long runs | 10,001 samples in 0.24 s, 100,001 in 0.53 s, about 1 million (the per-scope limit) in 3.5 s |
@@ -108,7 +108,7 @@ podman run --rm fulgurlab sh -c "cd server && node --test test/*.test.js"
 - There is no per-client rate limiting and no network namespace for the Scilab process yet. Put the server behind scope.io's API gateway, or add both, before exposing it publicly.
 - Limits per run: 200 blocks, 1 million samples per scope, 2 million in total.
 - It is pinned to Scilab 2024.0 from Ubuntu. Upstream is newer, and the tests are the regression check before any upgrade.
-- 19 blocks so far. There are no state-space, switch or user-function blocks and no subsystems.
+- 22 blocks so far. The state-space block is single-input single-output, the user function has no time variable, and there are no subsystems.
 - The repository started as a fork of CircuitJS. That code was removed in November 2026 and only remains in the git history.
 
 ## Layout

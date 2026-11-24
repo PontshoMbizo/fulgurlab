@@ -15,6 +15,7 @@
 //   splitting is needed.
 
 import { trimPoly } from './netlist.js';
+import { parseExpr, emitExpr } from './expr.js';
 
 /** Format a validated finite number for Scilab. */
 export function fmt(x) {
@@ -37,6 +38,7 @@ export function polyExpr(coeffs, v) {
 }
 
 const vec = (xs) => `[${xs.map(fmt).join(';')}]`;
+const mat = (rows) => `[${rows.map((r) => r.map(fmt).join(',')).join(';')}]`;
 const str = (s) => `"${s}"`; // only ever called with fixed/numeric content
 
 /**
@@ -89,6 +91,14 @@ function lower(b, settings) {
       else { num = [kp + kd * n, kp * n + ki, ki * n]; den = [1, n, 0]; }
       return one(prim('CLR', [polyExpr(num, 's'), polyExpr(den, 's')]));
     }
+    case 'stateSpace':
+      return one(prim('CLSS', [mat(p.A), mat(p.B), mat(p.C), mat(p.D), vec(p.x0)]));
+    case 'switch':
+      // SWITCH2_m: [datatype; rule (0: >=, 1: >, 2: ~=); threshold; zero-crossing on]
+      return one(prim('SWITCH2_m', ['1', String(p.rule), fmt(p.threshold), '1']));
+    case 'userFn':
+      // the expression is re-emitted from its parse tree, never copied from the request
+      return one(prim('EXPRESSION', [String(p.inputs), emitExpr(parseExpr(p.expr, p.inputs), fmt), '1'], { nin: p.inputs }));
     case 'delay':
       return one(prim('TIME_DELAY', [fmt(p.T), fmt(p.initial), '1024']));
     case 'zoh':

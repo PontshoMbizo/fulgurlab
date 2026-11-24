@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { BLOCK_MAP, LIMITS, type Param } from '../../../shared/catalog.js';
 import type { Block, Issue, Netlist, Selection } from './types';
-import { formatVector, parseVector, ports } from './model';
+import { formatMatrix, formatVector, parseMatrix, parseVector, ports } from './model';
 
 interface Props {
   net: Netlist;
@@ -39,6 +39,15 @@ function paramParser(p: Param) {
       const v = parseVector(s);
       return v && v.length <= LIMITS.maxVector ? { ok: true as const, v } : { ok: false as const, msg: 'Numbers separated by spaces, e.g. [1 2 1]' };
     };
+    case 'matrix': return (s: string) => {
+      const v = parseMatrix(s);
+      return v && v.length <= LIMITS.maxVector && v[0].length <= LIMITS.maxVector
+        ? { ok: true as const, v } : { ok: false as const, msg: 'Rows separated by ;, e.g. 0 1; -2 -3' };
+    };
+    case 'expr': return (s: string) => {
+      const t = s.trim();
+      return t && t.length <= 200 ? { ok: true as const, v: t } : { ok: false as const, msg: 'Enter an expression, up to 200 characters' };
+    };
     case 'signs': return (s: string) => {
       const t = s.replace(/\s/g, '');
       return new RegExp(`^[${p.alphabet!.replace(/[-]/g, '\\-')}]{1,8}$`).test(t)
@@ -48,6 +57,7 @@ function paramParser(p: Param) {
 }
 
 function show(p: Param, v: unknown) {
+  if (p.kind === 'matrix') return formatMatrix(v as number[][]);
   return p.kind === 'vector' ? formatVector(v as number[]) : String(v);
 }
 
@@ -152,7 +162,7 @@ export function Inspector({ net, selection, issues, onBlockChange, onSettings, o
     const { inputs, outputs } = ports(b);
     const fields: FieldDef[] = [
       { key: 'name', label: 'Name', value: b.name ?? '', text: true, parse: (s) => ({ ok: true, v: s }) },
-      ...def.params.map((p): FieldDef => ({ key: `p:${p.key}`, label: p.label, hint: p.hint, value: show(p, b.params[p.key]), parse: paramParser(p) })),
+      ...def.params.map((p): FieldDef => ({ key: `p:${p.key}`, label: p.label, hint: p.hint, value: show(p, b.params[p.key]), text: p.kind === 'expr' || p.kind === 'matrix', parse: paramParser(p) })),
     ];
     return (
       <ParamsPanel

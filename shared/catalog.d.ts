@@ -1,16 +1,16 @@
 // Types for shared/catalog.js (plain ESM so the Node server can import it without a build).
-export type ParamKind = 'number' | 'vector' | 'signs' | 'int';
+export type ParamKind = 'number' | 'vector' | 'signs' | 'int' | 'matrix' | 'expr';
 export interface Param {
   key: string;
   label: string;
   kind: ParamKind;
-  default: number | number[] | string;
+  default: number | number[] | number[][] | string;
   min?: number;
   max?: number;
   alphabet?: string;
   hint?: string;
 }
-export type Params = Record<string, number | number[] | string>;
+export type Params = Record<string, number | number[] | number[][] | string>;
 export interface BlockDef {
   type: string;
   label: string;

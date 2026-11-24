@@ -21,6 +21,9 @@ export function blockSize(b: Block): { w: number; h: number } {
       return { w: Math.max(88, Math.ceil((16 + longest * 9.6) / GRID) * GRID), h: Math.max(64, n * 24 + 16) };
     }
     case 'pid': return { w: 104, h: 64 };
+    case 'stateSpace': return { w: 104, h: 64 };
+    case 'switch': return { w: 88, h: 72 };
+    case 'userFn': return { w: 96, h: Math.max(56, n * 24 + 16) };
     default: return { w: 88, h: Math.max(56, n * 24 + 16) };
   }
 }
@@ -146,6 +149,17 @@ export function parseVector(s: string): number[] | null {
 
 export function formatVector(v: number[]) {
   return `[${v.join(' ')}]`;
+}
+
+/** Parse "0 1; -2 -3" (rows separated by ";" or newlines) into a rectangular matrix; null when invalid. */
+export function parseMatrix(s: string): number[][] | null {
+  const rows = s.replace(/[[\]]/g, ' ').split(/[;\n]+/).map((r) => r.trim()).filter(Boolean).map((r) => r.split(/[\s,]+/).map(Number));
+  if (!rows.length || !rows.every((r) => r.length === rows[0].length && r.every(Number.isFinite))) return null;
+  return rows;
+}
+
+export function formatMatrix(m: number[][]) {
+  return m.map((r) => r.join(' ')).join('; ');
 }
 
 export function emptyNetlist(): Netlist {

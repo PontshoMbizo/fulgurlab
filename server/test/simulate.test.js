@@ -132,3 +132,55 @@ test('a failed run does not poison the next one (warm worker reuse)', opts, asyn
   const sc = await chain({ type: 'constant', params: { value: 3 } }, null, 1);
   close(at(sc, 1), 3, 1e-6, 'constant after a failed run');
 });
+
+test('state-space, switch and user function', opts, async () => {
+  const step = { type: 'step', params: { time: 0 } };
+  // x' = -x + u, y = x  ->  1 - e^-t
+  const ss = await chain(step, { type: 'stateSpace', params: { A: [[-1]], B: [[1]], C: [[1]], D: [[0]], x0: [0] } }, 3);
+  close(at(ss, 1), 1 - Math.exp(-1), 1e-3, 'state-space first order');
+  // double integrator with D feed-through: y = x1 + 0.5 u; x1' = x2, x2' = u  ->  t^2/2 + 0.5
+  const dbl = await chain(step, { type: 'stateSpace', params: { A: [[0, 1], [0, 0]], B: [[0], [1]], C: [[1, 0]], D: [[0.5]], x0: [0, 0] } }, 2);
+  close(at(dbl, 1), 1, 1e-3, 'state-space second order with D');
+
+  // switch: input 1 = 10, input 3 = 20, control = ramp crossing the threshold 1 at t = 1
+  const sw = (rule) => validateNetlist({
+    settings: { tf: 2, dt: 0.01 },
+    blocks: [
+      { id: 'a', type: 'constant', params: { value: 10 } },
+      { id: 'ctl', type: 'ramp', params: { slope: 1, start: 0, initial: 0 } },
+      { id: 'b', type: 'constant', params: { value: 20 } },
+      { id: 'sw', type: 'switch', params: { rule, threshold: 1 } },
+      { id: 'sc', type: 'scope' },
+    ],
+    links: [
+      { from: { block: 'a', port: 0 }, to: { block: 'sw', port: 0 } },
+      { from: { block: 'ctl', port: 0 }, to: { block: 'sw', port: 1 } },
+      { from: { block: 'b', port: 0 }, to: { block: 'sw', port: 2 } },
+      { from: { block: 'sw', port: 0 }, to: { block: 'sc', port: 0 } },
+    ],
+  });
+  const s0 = (await simulate(sw(0))).scopes.sc;
+  close(at(s0, 0.5), 20, 1e-9, 'switch below threshold passes input 3');
+  close(at(s0, 1.5), 10, 1e-9, 'switch above threshold passes input 1');
+  const s2 = (await simulate(sw(2))).scopes.sc;
+  close(at(s2, 0.5), 10, 1e-9, 'switch rule "not equal" passes input 1 away from the threshold');
+
+  // user function of two inputs: 2*u1 + u2^2
+  const fn = validateNetlist({
+    settings: { tf: 1, dt: 0.1 },
+    blocks: [
+      { id: 'a', type: 'constant', params: { value: 3 } },
+      { id: 'b', type: 'constant', params: { value: 4 } },
+      { id: 'f', type: 'userFn', params: { expr: '2*u1 + u2^2 - -1', inputs: 2 } },
+      { id: 'sc', type: 'scope' },
+    ],
+    links: [
+      { from: { block: 'a', port: 0 }, to: { block: 'f', port: 0 } },
+      { from: { block: 'b', port: 0 }, to: { block: 'f', port: 1 } },
+      { from: { block: 'f', port: 0 }, to: { block: 'sc', port: 0 } },
+    ],
+  });
+  close(at((await simulate(fn)).scopes.sc, 0.5), 2 * 3 + 16 + 1, 1e-9, 'user function');
+  const sine = await chain({ type: 'sine', params: { amplitude: 1, frequency: 3, phase: 0 } }, { type: 'userFn', params: { expr: 'abs(u1) + exp(0.5)', inputs: 1 } });
+  close(at(sine, 0.5), Math.abs(Math.sin(1.5)) + Math.exp(0.5), 1e-6, 'user function with functions and decimals');
+});
