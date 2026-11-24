@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>fulgurlab block icons</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=STIX+Two+Text:ital@0;1&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div style="width: 1440px; height: 1180px; box-sizing: border-box; padding: 40px 48px; background: #F0F0F0; font-family: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif; font-size: 12px; color: #000; display: flex; flex-direction: column; gap: 22px">
+
+  <div style="display: flex; align-items: baseline; gap: 16px; border-bottom: 1px solid #ABABAB; padding-bottom: 12px">
+    <h1 style="margin: 0; font-size: 22px; font-weight: 600">Block icons</h1>
+    <p style="margin: 0; color: #444; font-size: 13px">All 19 fulgurlab blocks, drawn after the Simulink library. The symbol fills the box; open chevrons mark unconnected ports.</p>
+  </div>
+
+  <div style="display: flex; gap: 32px; flex-wrap: wrap; color: #222; line-height: 1.5">
+    <span><strong style="font-weight: 600">Box</strong> 1 px black, white, square corners</span>
+    <span><strong style="font-weight: 600">Symbol</strong> 60–75% of the box height; maths in STIX Two (serif, italic variables)</span>
+    <span><strong style="font-weight: 600">Curves</strong> 1.6 px black on a 0.8 px grey axis</span>
+    <span><strong style="font-weight: 600">Ports</strong> open chevron when free, filled wire arrow when connected</span>
+  </div>
+
+  <!-- Sources -->
+  <section style="display: flex; flex-direction: column; gap: 8px">
+    <h2 style="margin: 0; font-size: 13px; font-weight: 600">Sources</h2>
+    <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1px; background: #D0D0D0; border: 1px solid #D0D0D0">
+      <figure style="margin: 0; background: #FFFFFF; padding: 14px 12px 12px; display: flex; flex-direction: column; align-items: center; gap: 8px">
+        <svg width="120" height="90" viewBox="0 0 64 48" role="img" aria-label="Step icon"><rect x="8.5" y="4.5" width="47" height="39" fill="#FFFFFF" stroke="#000"></rect><path d="M14,36 H30 V12 H50" fill="none" stroke="#000" stroke-width="1.6"></path><path d="M57,20 L62,24 L57,28" fill="none" stroke="#000" stroke-width="1.4"></path></svg>
+        <figcaption style="text-align: center"><div style="font-weight: 500">Step</div><div style="color: #555; font-size: 11px">Initial → final at step time</div></figcaption>
+      </figure>
+      <figure style="margin: 0; background: #FFFFFF; padding: 14px 12px 12px; display: flex; flex-direction: column; align-items: center; gap: 8px">
+        <svg width="120" height="90" viewBox="0 0 64 48" role="img" aria-label="Constant icon"><rect x="8.5" y="4.5" width="47" height="39" fill="#FFFFFF" stroke="#000"></rect><text x="32" y="31.5" font-size="20" text-anchor="middle" font-family="'STIX Two Text', 'Times New Roman', serif">1</text><path d="M57,20 L62,24 L57,28" fill="none" stroke="#000" stroke-width="1.4"></path></svg>
+        <figcaption style="text-align: center"><div style="font-weight: 500">Constant</div><div style="color: #555; font-size: 11px">Shows its value</div></figcaption>
+      </figure>
+      <figure style="margin: 0; background: #FFFFFF; padding: 14px 12px 12px; display: flex; flex-direction: column; align-items: center; gap: 8px">
+        <svg width="120" height="90" viewBox="0 0 64 48" role="img" aria-label="Sine Wave icon"><rect x="8.5" y="4.5" width="47" height="39" fill="#FFFFFF" stroke="#000"></rect><path d="M13,24 H51" stroke="#9A9A9A" stroke-width="0.8"></path><path d="M13,24 C19,3 25,3 32,24 S45,45 51,24" fill="none" stroke="#000" stroke-width="1.6"></path><path d="M57,20 L62,24 L57,28" fill="none" stroke="#000" stroke-width="1.4"></path></svg>
+        <figcaption style="text-align: center"><div style="font-weight: 500">Sine Wave</div><div style="color: #555; font-size: 11px">A·sin(ωt + φ)</div></figcaption>
+      </figure>
+      <figure style="margin: 0; background: #FFFFFF; padding: 14px 12px 12px; display: flex; flex-direction: column; align-items: center; gap: 8px">
+        <svg width="120" height="90" viewBox="0 0 64 48" role="img" aria-label="Ramp icon"><rect x="8.5" y="4.5" width="47" height="39" fill="#FFFFFF" stroke="#000"></rect><path d="M14,37 H50 M14,37 V9" stroke="#9A9A9A" stroke-width="0.8" fill="none"></path><path d="M14,35 H23 L49,10" fill="none" stroke="#000" stroke-width="1.6"></path><path d="M57,20 L62,24 L57,28" fill="none" stroke="#000" stroke-width="1.4"></path></svg>
+        <figcaption style="text-align: center"><div style="font-weight: 500">Ramp</div><div style="color: #555; font-size: 11px">Slope from start time</div></figcaption>
+      </figure>
+      <figure style="margin: 0; background: #FFFFFF; padding: 14px 12px 12px; display: flex; flex-direction: column; align-items: center; gap: 8px">
+        <svg width="120" height="90" viewBox="0 0 64 48" role="img" aria-label="Clock icon"><circle cx="30" cy="24" r="15.5" fill="#FFFFFF" stroke="#000"></circle><path d="M30,13 V24 H39" fill="none" stroke="#000" stroke-width="1.6" stroke-linecap="round"></path><path d="M49,20 L54,24 L49,28" fill="none" stroke="#000" stroke-width="1.4"></path></svg>
+        <figcaption style="text-align: center"><div style="font-weight: 500">Clock</div><div style="color: #555; font-size: 11px">Outputs time t</div></figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- Math -->
+  <section style="display: flex; flex-direction: column; gap: 8px">
+    <h2 style="margin: 0; font-size: 13px; font-weight: 600">Math</h2>
+    <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1px; background: #D0D0D0; border: 1px solid #D0D0D0">
+      <figure style="margin: 0; background: #FFFFFF; padding: 14px 12px 12px; display: flex; flex-direction: column; align-items: center; gap: 8px">
+        <svg width="120" height="90" viewBox="0 0 64 48" role="img" aria-label="Gain icon"><path d="M2,20 L7,24 L2,28" fill="none" stroke="#000" stroke-width="1.4"></path><path d="M8.5,4.5 L55.5,24 L8.5,43.5 Z" fill="#FFFFFF" stroke="#000"></path><text x="22" y="30.5" font-size="18" text-anchor="middle" font-style="italic" font-family="'STIX Two Text', 'Times New Roman', serif">K</text><path d="M57,20 L62,24 L57,28" fill="none" stroke="#000" stroke-width="1.4"></path></svg>
+        <figcaption style="text-align: center"><div style="font-weight: 500">Gain</div><div style="color: #555; font-size: 11px">Triangle shows K</div></figcaption>
+      </figure>
+      <figure style="margin: 0; background: #FFFFFF; padding: 14px 12px 12px; display: flex; flex-direction: column; align-items: center; gap: 8px">
+        <svg width="120" height="90" viewBox="0 0 64 48" role="img" aria-label="Sum icon"><path d="M8,20 L13,24 L8,28" fill="none" stroke="#000" stroke-width="1.4"></path><path d="M28,47.5 L32,43 L36,47.5" fill="none" stroke="#000" stroke-width="1.4"></path><circle cx="32" cy="24" r="18" fill="#FFFFFF" stroke="#000"></circle><text x="22" y="29" font-size="15" text-anchor="middle" font-family="'STIX Two Text', 'Times New Roman', serif">+</text><text x="32" y="39" font-size="15" text-anchor="middle" font-family="'STIX Two Text', 'Times New Roman', serif">−</text><path d="M51,20 L56,24 L51,28" fill="none" stroke="#000" stroke-width="1.4"></path></svg>
+        <figcaption style="text-align: center"><div style="font-weight: 500">Sum</div><div style="color: #555; font-size: 11px">A sign beside each input</div></figcaption>
+      </figure>
+      <figure style="margin: 0; background: #FFFFFF; padding: 14px 12px 12px; display: flex; flex-direction: column; align-items: center; gap: 8px">
+        <svg width="120" height="90" viewBox="0 0 64 48" role="img" aria-label="Product icon"><path d="M2,13 L7,17 L2,21 M2,27 L7,31 L2,35" fill="none" stroke="#000" stroke-width="1.4"></path><rect x="8.5" y="4.5" width="47" height="39" fill="#FFFFFF" stroke="#000"></rect><text x="32" y="33" font-size="26" text-anchor="middle" font-family="'STIX Two Text', 'Times New Roman', serif">×</text><path d="M57,20 L62,24 L57,28" fill="none" stroke="#000" stroke-width="1.4"></path></svg>
+        <figcaption style="text-align: center"><div style="font-weight: 500">Product</div><div style="color: #555; font-size: 11px">× or ÷ per input</div></figcaption>
+      </figure>
+      <figure style="margin: 0; background: #FFFFFF; padding: 14px 12px 12px; display: flex; flex-direction: column; align-items: center; gap: 8px">
+        <svg width="120" height="90" viewBox="0 0 64 48" role="img" aria-label="Abs icon"><path d="M2,20 L7,24 L2,28" fill="none" stroke="#000" stroke-width="1.4"></path><rect x="8.5" y="4.5" width="47" height="39" fill="#FFFFFF" stroke="#000"></rect><text x="32" y="31" font-size="19" text-anchor="middle" font-style="italic" font-family="'STIX Two Text', 'Times New Roman', serif">|u|</text><path d="M57,20 L62,24 L57,28" fill="none" stroke="#000" stroke-width="1.4"></path></svg>
+        <figcaption style="text-align: center"><div style="font-weight: 500">Abs</div><div style="color: #555; font-size: 11px">|u|</div></figcaption>
+      </figure>
+      <figure style="margin: 0; background: #FFFFFF; padding: 14px 12px 12px; display: flex; flex-direction: column; align-items: center; gap: 8px">
+        <svg width="120" height="90" viewBox="0 0 64 48" role="img" aria-label="Saturation icon"><path d="M2,20 L7,24 L2,28" fill="none" stroke="#000" stroke-width="1.4"></path><rect x="8.5" y="4.5" width="47" height="39" fill="#FFFFFF" stroke="#000"></rect><path d="M13,24 H51 M32,9 V39" stroke="#9A9A9A" stroke-width="0.8"></path><path d="M13,36 H24 L40,12 H51" fill="none" stroke="#000" stroke-width="1.6"></path><path d="M57,20 L62,24 L57,28" fill="none" stroke="#000" stroke-width="1.4"></path></svg>
+        <figcaption style="text-align: center"><div style="font-weight: 500">Saturation</div><div style="color: #555; font-size: 11px">Clipped transfer curve</div></figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- Continuous -->
+  <section style="display: flex; flex-direction: column; gap: 8px">
+    <h2 style="margin: 0; font-size: 13px; font-weight: 600">Continuous</h2>
+    <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1px; background: #D0D0D0; border: 1px solid #D0D0D0">
+      <figure style="margin: 0; background: #FFFFFF; padding: 14px 12px 12px; display: flex; flex-direction: column; align-items: center; gap: 8px">
+        <svg width="120" height="90" viewBox="0 0 64 48" role="img" aria-label="Integrator icon"><path d="M2,20 L7,24 L2,28" fill="none" stroke="#000" stroke-width="1.4"></path><rect x="8.5" y="4.5" width="47" height="39" fill="#FFFFFF" stroke="#000"></rect><g font-family="'STIX Two Text', 'Times New Roman', serif" text-anchor="middle" font-size="16"><text x="32" y="20.5">1</text><text x="32" y="38.5" font-style="italic">s</text></g><path d="M23,24.5 H41" stroke="#000" stroke-width="1"></path><path d="M57,20 L62,24 L57,28" fill="none" stroke="#000" stroke-width="1.4"></path></svg>
+        <figcaption style="text-align: center"><div style="font-weight: 500">Integrator</div><div style="color: #555; font-size: 11px">1/s</div></figcaption>
+      </figure>
+      <figure style="margin: 0; background: #FFFFFF; padding: 14px 12px 12px; display: flex; flex-direction: column; align-items: center; gap: 8px">
+        <svg width="120" height="90" viewBox="0 0 64 48" role="img" aria-label="Derivative icon"><path d="M2,20 L7,24 L2,28" fill="none" stroke="#000" stroke-width="1.4"></path><rect x="8.5" y="4.5" width="47" height="39" fill="#FFFFFF" stroke="#000"></rect><g font-family="'STIX Two Text', 'Times New Roman', serif" text-anchor="middle" font-size="15" font-style="italic"><text x="32" y="20.5">du</text><text x="32" y="38.5">dt</text></g><path d="M21,24.5 H43" stroke="#000" stroke-width="1"></path><path d="M57,20 L62,24 L57,28" fill="none" stroke="#000" stroke-width="1.4"></path></svg>
+        <figcaption style="text-align: center"><div style="font-weight: 500">Derivative</div><div style="color: #555; font-size: 11px">du/dt</div></figcaption>
+      </figure>
+      <figure style="margin: 0; background: #FFFFFF; padding: 14px 12px 12px; display: flex; flex-direction: column; align-items: center; gap: 8px">
+        <svg width="120" height="90" viewBox="0 0 64 48" role="img" aria-label="Transfer Fcn icon"><path d="M2,20 L7,24 L2,28" fill="none" stroke="#000" stroke-width="1.4"></path><rect x="8.5" y="4.5" width="47" height="39" fill="#FFFFFF" stroke="#000"></rect><g font-family="'STIX Two Text', 'Times New Roman', serif" text-anchor="middle" font-size="14"><text x="32" y="20">1</text><text x="32" y="38"><tspan font-style="italic">s</tspan> + 1</text></g><path d="M15,24.5 H49" stroke="#000" stroke-width="1"></path><path d="M57,20 L62,24 L57,28" fill="none" stroke="#000" stroke-width="1.4"></path></svg>
+        <figcaption style="text-align: center"><div style="font-weight: 500">Transfer Fcn</div><div style="color: #555; font-size: 11px">Box widens with the polynomial</div></figcaption>
+      </figure>
+      <figure style="margin: 0; background: #FFFFFF; padding: 14px 12px 12px; display: flex; flex-direction: column; align-items: center; gap: 8px">
+        <svg width="120" height="90" viewBox="0 0 64 48" role="img" aria-label="PID Controller icon"><path d="M2,20 L7,24 L2,28" fill="none" stroke="#000" stroke-width="1.4"></path><rect x="8.5" y="4.5" width="47" height="39" fill="#FFFFFF" stroke="#000"></rect><text x="32" y="29" font-size="14" text-anchor="middle" font-family="'STIX Two Text', 'Times New Roman', serif">PID(<tspan font-style="italic">s</tspan>)</text><path d="M57,20 L62,24 L57,28" fill="none" stroke="#000" stroke-width="1.4"></path></svg>
+        <figcaption style="text-align: center"><div style="font-weight: 500">PID Controller</div><div style="color: #555; font-size: 11px">Gains live in the dialog</div></figcaption>
+      </figure>
+      <figure style="margin: 0; background: #FFFFFF; padding: 14px 12px 12px; display: flex; flex-direction: column; align-items: center; gap: 8px">
+        <svg width="120" height="90" viewBox="0 0 64 48" role="img" aria-label="Transport Delay icon"><path d="M2,20 L7,24 L2,28" fill="none" stroke="#000" stroke-width="1.4"></path><rect x="8.5" y="4.5" width="47" height="39" fill="#FFFFFF" stroke="#000"></rect><path d="M13,24 H51" stroke="#9A9A9A" stroke-width="0.8"></path><path d="M19,9 V39" stroke="#000" stroke-width="1"></path><path d="M19,24 C24,5 29,5 34.5,24 S45,43 50,24" fill="none" stroke="#000" stroke-width="1.6"></path><path d="M57,20 L62,24 L57,28" fill="none" stroke="#000" stroke-width="1.4"></path></svg>
+        <figcaption style="text-align: center"><div style="font-weight: 500">Transport Delay</div><div style="color: #555; font-size: 11px">Signal starts after T</div></figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- Discrete + Sinks -->
+  <div style="display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 1fr); gap: 24px">
+    <section style="display: flex; flex-direction: column; gap: 8px">
+      <h2 style="margin: 0; font-size: 13px; font-weight: 600">Discrete</h2>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: #D0D0D0; border: 1px solid #D0D0D0">
+        <figure style="margin: 0; background: #FFFFFF; padding: 14px 12px 12px; display: flex; flex-direction: column; align-items: center; gap: 8px">
+          <svg width="120" height="90" viewBox="0 0 64 48" role="img" aria-label="Zero-Order Hold icon"><path d="M2,20 L7,24 L2,28" fill="none" stroke="#000" stroke-width="1.4"></path><rect x="8.5" y="4.5" width="47" height="39" fill="#FFFFFF" stroke="#000"></rect><path d="M13,36 H20 V30 H27 V23 H34 V17 H41 V11 H51" fill="none" stroke="#000" stroke-width="1.6"></path><path d="M57,20 L62,24 L57,28" fill="none" stroke="#000" stroke-width="1.4"></path></svg>
+          <figcaption style="text-align: center"><div style="font-weight: 500">Zero-Order Hold</div><div style="color: #555; font-size: 11px">Staircase</div></figcaption>
+        </figure>
+        <figure style="margin: 0; background: #FFFFFF; padding: 14px 12px 12px; display: flex; flex-direction: column; align-items: center; gap: 8px">
+          <svg width="120" height="90" viewBox="0 0 64 48" role="img" aria-label="Unit Delay icon"><path d="M2,20 L7,24 L2,28" fill="none" stroke="#000" stroke-width="1.4"></path><rect x="8.5" y="4.5" width="47" height="39" fill="#FFFFFF" stroke="#000"></rect><g font-family="'STIX Two Text', 'Times New Roman', serif" text-anchor="middle" font-size="16"><text x="32" y="20.5">1</text><text x="32" y="38.5" font-style="italic">z</text></g><path d="M23,24.5 H41" stroke="#000" stroke-width="1"></path><path d="M57,20 L62,24 L57,28" fill="none" stroke="#000" stroke-width="1.4"></path></svg>
+          <figcaption style="text-align: center"><div style="font-weight: 500">Unit Delay</div><div style="color: #555; font-size: 11px">1/z</div></figcaption>
+        </figure>
+        <figure style="margin: 0; background: #FFFFFF; padding: 14px 12px 12px; display: flex; flex-direction: column; align-items: center; gap: 8px">
+          <svg width="120" height="90" viewBox="0 0 64 48" role="img" aria-label="Discrete Transfer Fcn icon"><path d="M2,20 L7,24 L2,28" fill="none" stroke="#000" stroke-width="1.4"></path><rect x="8.5" y="4.5" width="47" height="39" fill="#FFFFFF" stroke="#000"></rect><g font-family="'STIX Two Text', 'Times New Roman', serif" text-anchor="middle" font-size="13"><text x="32" y="20">1</text><text x="32" y="37.5"><tspan font-style="italic">z</tspan> + 0.5</text></g><path d="M14,24.5 H50" stroke="#000" stroke-width="1"></path><path d="M57,20 L62,24 L57,28" fill="none" stroke="#000" stroke-width="1.4"></path></svg>
+          <figcaption style="text-align: center"><div style="font-weight: 500">Discrete TF</div><div style="color: #555; font-size: 11px">Polynomials in z</div></figcaption>
+        </figure>
+      </div>
+    </section>
+    <section style="display: flex; flex-direction: column; gap: 8px">
+      <h2 style="margin: 0; font-size: 13px; font-weight: 600">Sinks</h2>
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; background: #D0D0D0; border: 1px solid #D0D0D0">
+        <figure style="margin: 0; background: #FFFFFF; padding: 14px 12px 12px; display: flex; flex-direction: column; align-items: center; gap: 8px">
+          <svg width="120" height="90" viewBox="0 0 64 48" role="img" aria-label="Scope icon"><path d="M2,20 L7,24 L2,28" fill="none" stroke="#000" stroke-width="1.4"></path><rect x="8.5" y="4.5" width="47" height="39" fill="#FFFFFF" stroke="#000"></rect><rect x="15.5" y="10.5" width="33" height="24" fill="#FFFFFF" stroke="#000" stroke-width="1.2"></rect><path d="M24,38.5 H40" stroke="#000" stroke-width="1.2"></path><path d="M18,27 C21,15 24,15 27,24 S33,33 36,22 S42,14 46,19" fill="none" stroke="#000" stroke-width="1"></path></svg>
+          <figcaption style="text-align: center"><div style="font-weight: 500">Scope</div><div style="color: #555; font-size: 11px">1–8 inputs; chevrons stack</div></figcaption>
+        </figure>
+      </div>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1180}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

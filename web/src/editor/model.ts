@@ -13,7 +13,13 @@ export function blockSize(b: Block): { w: number; h: number } {
     case 'gain': return { w: 64, h: 56 };
     case 'sum': return { w: 48, h: Math.max(48, n * 20 + 8) };
     case 'scope': return { w: 72, h: Math.max(64, n * 20 + 16) };
-    case 'transferFn': case 'discreteTF': return { w: 120, h: Math.max(64, n * 24 + 16) };
+    case 'clock': return { w: 56, h: 56 };
+    case 'transferFn': case 'discreteTF': {
+      // widen with the polynomial: ~9.6 px per character of the longer line
+      const v = b.type === 'transferFn' ? 's' : 'z';
+      const longest = Math.max(polyText(b.params.num as number[], v).length, polyText(b.params.den as number[], v).length);
+      return { w: Math.max(88, Math.ceil((16 + longest * 9.6) / GRID) * GRID), h: Math.max(64, n * 24 + 16) };
+    }
     case 'pid': return { w: 104, h: 64 };
     default: return { w: 88, h: Math.max(56, n * 24 + 16) };
   }

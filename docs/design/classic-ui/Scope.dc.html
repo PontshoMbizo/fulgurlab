@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Scope window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.mi{background:none;border:1px solid transparent;padding:1px 7px;font:inherit;color:#000;cursor:default}
+.mi:hover{background:#CCE4F7;border-color:#99C9EF}
+.tb{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;background:none;border:1px solid transparent;border-radius:2px;padding:0;color:#333;cursor:default}
+.tb:hover{background:#E5F1FB;border-color:#7EB4EA}
+.tb:disabled{color:#A0A0A0}
+.wc{width:44px;height:30px;background:none;border:0;padding:0;color:#000;font:inherit;cursor:default}
+.wc:hover{background:#E5E5E5}
+.wc.x:hover{background:#E81123;color:#FFFFFF}
+</style>
+</helmet>
+<div style="width: 760px; height: 560px; box-sizing: border-box; display: flex; flex-direction: column; font-family: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif; font-size: 12px; color: #000; background: #F0F0F0; border: 1px solid #E8A87C">
+
+  <!-- Title bar -->
+  <div style="display: flex; align-items: center; height: 30px; background: #FFFFFF; padding-left: 8px">
+    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="4.5" width="19" height="15" fill="#FFFFFF" stroke="#333" stroke-width="1.3"></rect><rect x="5" y="7" width="14" height="10" fill="#000000"></rect><path d="M5.5 14c2-5 4-5 6 0s4 5 7-2" fill="none" stroke="#FFE600" stroke-width="1.3"></path></svg>
+    <span style="margin-left: 8px">Scope — PID position loop</span>
+    <span style="margin-left: auto; display: flex">
+      <button type="button" class="wc" aria-label="Minimise">—</button>
+      <button type="button" class="wc" aria-label="Maximise">☐</button>
+      <button type="button" class="wc x" aria-label="Close scope">✕</button>
+    </span>
+  </div>
+
+  <!-- Menu -->
+  <div style="display: flex; gap: 2px; padding: 1px 4px; background: #FFFFFF">
+    <button type="button" class="mi"><u>F</u>ile</button>
+    <button type="button" class="mi"><u>T</u>ools</button>
+    <button type="button" class="mi"><u>V</u>iew</button>
+    <button type="button" class="mi">S<u>i</u>mulation</button>
+    <button type="button" class="mi"><u>H</u>elp</button>
+  </div>
+
+  <!-- Toolbar -->
+  <div role="toolbar" aria-label="Scope toolbar" style="display: flex; align-items: center; gap: 2px; padding: 2px 4px; border-top: 1px solid #E3E3E3; border-bottom: 1px solid #D0D0D0">
+    <button type="button" class="tb" aria-label="Scope settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"></path></svg></button>
+    <span aria-hidden="true" style="width: 1px; height: 18px; background: #C8C8C8; margin: 0 4px"></span>
+    <button type="button" aria-label="Run simulation" style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; border: 1px solid #136B2A; background: #1E8F3A; padding: 0; margin: 0 2px; cursor: default"><svg width="10" height="10" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 1.5l9 5.5-9 5.5z" fill="#FFFFFF"></path></svg></button>
+    <button type="button" class="tb" aria-label="Step forward"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l11 7-11 7z" fill="#1E8F3A"></path><path d="M18 5v14" stroke="#1E8F3A" stroke-width="2"></path></svg></button>
+    <button type="button" class="tb" aria-label="Stop" disabled><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" fill="currentColor"></rect></svg></button>
+    <span aria-hidden="true" style="width: 1px; height: 18px; background: #C8C8C8; margin: 0 4px"></span>
+    <button type="button" class="tb" aria-label="Zoom in"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="10" cy="10" r="6"></circle><path d="M15 15l5 5M10 7v6M7 10h6"></path></svg></button>
+    <button type="button" class="tb" aria-label="Autoscale axes"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 9V4h5M20 15v5h-5M4 4l7 7M20 20l-7-7"></path></svg></button>
+    <button type="button" class="tb" aria-label="Cursor measurements" style="background: #CCE4F7; border-color: #7EB4EA"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M8 3v18M16 3v18"></path><path d="M3 12h18" stroke-dasharray="2 2"></path></svg></button>
+    <button type="button" class="tb" aria-label="Legend"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2" aria-hidden="true"><path d="M3 7h5" stroke="#C9A800"></path><path d="M3 14h5" stroke="#0091C9"></path><path d="M11 7h10M11 14h10" stroke="#333" stroke-width="1.4"></path></svg></button>
+    <span aria-hidden="true" style="width: 1px; height: 18px; background: #C8C8C8; margin: 0 4px"></span>
+    <button type="button" class="tb" aria-label="Export CSV"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"></path></svg></button>
+    <button type="button" class="tb" aria-label="Dock into editor"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="4" width="18" height="16"></rect><path d="M3 14h18"></path></svg></button>
+  </div>
+
+  <!-- Plot -->
+  <div style="flex: 1; display: grid; grid-template-columns: 38px 696px; grid-template-rows: 400px 20px; column-gap: 6px; padding: 14px 14px 0 4px; background: #1A1A1A">
+    <div style="position: relative; font: 10px 'IBM Plex Mono', monospace; color: #D4D4D4; text-align: right">
+      <span style="position: absolute; right: 0; top: 0%; transform: translateY(-50%)">1.4</span>
+      <span style="position: absolute; right: 0; top: 12.5%; transform: translateY(-50%)">1.2</span>
+      <span style="position: absolute; right: 0; top: 25%; transform: translateY(-50%)">1.0</span>
+      <span style="position: absolute; right: 0; top: 37.5%; transform: translateY(-50%)">0.8</span>
+      <span style="position: absolute; right: 0; top: 50%; transform: translateY(-50%)">0.6</span>
+      <span style="position: absolute; right: 0; top: 62.5%; transform: translateY(-50%)">0.4</span>
+      <span style="position: absolute; right: 0; top: 75%; transform: translateY(-50%)">0.2</span>
+      <span style="position: absolute; right: 0; top: 87.5%; transform: translateY(-50%)">0</span>
+      <span style="position: absolute; right: 0; top: 100%; transform: translateY(-50%)">−0.2</span>
+    </div>
+    <div style="position: relative">
+      <svg width="696" height="400" viewBox="0 0 1000 320" preserveAspectRatio="none" role="img" aria-label="Step response of the PID loop: reference steps to 1 at 0.5 s; plant output peaks at 1.052 at 2.3 s and settles at 1" style="display: block; background: #000000">
+        <path d="M100,0V320M200,0V320M300,0V320M400,0V320M500,0V320M600,0V320M700,0V320M800,0V320M900,0V320M0,40H1000M0,80H1000M0,120H1000M0,160H1000M0,200H1000M0,240H1000M0,280H1000" stroke="#3A3A3A" stroke-width="1" vector-effect="non-scaling-stroke"></path>
+        <path d="M0,280 L50,280 L50,80 L1000,80" fill="none" stroke="#FFE600" stroke-width="1.5" vector-effect="non-scaling-stroke"></path>
+        <path d="M0,280 L50,280 L53,275.7 L56,269.3 L59,262.7 L62,256.1 L65,249.4 L68,242.7 L71,235.9 L74,229.2 L77,222.5 L80,215.9 L83,209.3 L86,202.9 L89,196.5 L92,190.2 L95,184.1 L98,178.1 L101,172.2 L104,166.5 L107,161 L110,155.6 L113,150.4 L116,145.4 L119,140.5 L122,135.9 L125,131.4 L128,127 L131,122.9 L134,119 L137,115.2 L140,111.6 L143,108.2 L146,105 L149,101.9 L152,99 L155,96.3 L158,93.7 L161,91.3 L164,89.1 L167,87 L170,85.1 L173,83.3 L176,81.6 L179,80.1 L182,78.6 L185,77.4 L188,76.2 L191,75.1 L194,74.2 L197,73.4 L200,72.6 L206,71.4 L212,70.5 L218,69.9 L224,69.6 L230,69.5 L236,69.6 L242,69.9 L251,70.5 L260,71.4 L272,72.8 L284,74.3 L296,75.8 L308,77.2 L320,78.6 L335,80 L350,81.2 L365,82 L380,82.6 L395,83 L415,83.1 L440,83 L470,82.6 L500,82 L540,81.4 L600,80.8 L700,80.4 L800,80.3 L1000,80.1" fill="none" stroke="#40C4FF" stroke-width="1.5" vector-effect="non-scaling-stroke"></path>
+        <path d="M230,0V320" stroke="#B0B0B0" stroke-width="1" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"></path>
+      </svg>
+      <!-- marker on peak: x=230/1000*696=160, y=69.5/320*400=87 -->
+      <span aria-hidden="true" style="position: absolute; left: 156px; top: 83px; width: 8px; height: 8px; box-sizing: border-box; border: 1.5px solid #40C4FF; background: #000000"></span>
+      <div style="position: absolute; left: 174px; top: 96px; padding: 5px 8px; background: #F0F0F0; border: 1px solid #ABABAB; font: 11px 'IBM Plex Mono', monospace; color: #000; line-height: 1.5">
+        <div style="color: #444">t = 2.300 s</div>
+        <div>Plant&#160;&#160;&#160;&#160;&#160;1.0525</div>
+        <div>Reference 1.0000</div>
+      </div>
+      <!-- legend -->
+      <div style="position: absolute; right: 8px; top: 8px; padding: 4px 8px; background: #1A1A1A; border: 1px solid #5A5A5A; color: #E6E6E6; font-size: 11px; display: flex; flex-direction: column; gap: 2px">
+        <span style="display: flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 16px; height: 2px; background: #FFE600"></span>Reference</span>
+        <span style="display: flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 16px; height: 2px; background: #40C4FF"></span>Plant</span>
+      </div>
+    </div>
+    <div></div>
+    <div style="position: relative; font: 10px 'IBM Plex Mono', monospace; color: #D4D4D4">
+      <span style="position: absolute; left: 0; top: 4px">0</span>
+      <span style="position: absolute; left: 10%; top: 4px; transform: translateX(-50%)">1</span>
+      <span style="position: absolute; left: 20%; top: 4px; transform: translateX(-50%)">2</span>
+      <span style="position: absolute; left: 30%; top: 4px; transform: translateX(-50%)">3</span>
+      <span style="position: absolute; left: 40%; top: 4px; transform: translateX(-50%)">4</span>
+      <span style="position: absolute; left: 50%; top: 4px; transform: translateX(-50%)">5</span>
+      <span style="position: absolute; left: 60%; top: 4px; transform: translateX(-50%)">6</span>
+      <span style="position: absolute; left: 70%; top: 4px; transform: translateX(-50%)">7</span>
+      <span style="position: absolute; left: 80%; top: 4px; transform: translateX(-50%)">8</span>
+      <span style="position: absolute; left: 90%; top: 4px; transform: translateX(-50%)">9</span>
+      <span style="position: absolute; right: 0; top: 4px">10</span>
+    </div>
+  </div>
+
+  <!-- Status bar -->
+  <div style="display: flex; align-items: center; height: 22px; padding: 0 8px; border-top: 1px solid #ABABAB; background: #F0F0F0">
+    <span style="flex: 1">Ready</span>
+    <span style="padding: 0 12px; border: 1px solid #C8C8C8; border-width: 0 1px">Sample based</span>
+    <span style="padding: 0 0 0 12px; font-family: 'IBM Plex Mono', monospace">T=10.000</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":760,"height":560}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

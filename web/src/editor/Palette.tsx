@@ -1,50 +1,77 @@
 import { useState } from 'react';
-import { BLOCKS, CATEGORIES } from '../../../shared/catalog.js';
+import { BLOCKS, CATEGORIES, defaultParams } from '../../../shared/catalog.js';
 import { BlockGlyph } from './BlockGlyph';
-import { blockSize } from './model';
-import { defaultParams } from '../../../shared/catalog.js';
+import { blockSize, ports } from './model';
 
-/** Library of blocks: drag onto the canvas, or click/Enter to add one. */
+/** Library Browser: a collapsible tree of blocks. Drag onto the canvas, or click/Enter to add one. */
 export function Palette({ onAdd }: { onAdd: (type: string) => void }) {
   const [q, setQ] = useState('');
-  const match = (s: string) => s.toLowerCase().includes(q.trim().toLowerCase());
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(['Discrete', 'Sinks']));
+  const query = q.trim().toLowerCase();
+  const match = (s: string) => s.toLowerCase().includes(query);
+  const toggle = (cat: string) => setCollapsed((c) => { const n = new Set(c); if (n.has(cat)) n.delete(cat); else n.add(cat); return n; });
   return (
-    <nav className="palette" aria-label="Block library">
-      <input className="palette-search" placeholder="Find a block" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Find a block" />
-      {CATEGORIES.map((cat) => {
-        const items = BLOCKS.filter((b) => b.category === cat && (match(b.label) || match(b.description) || match(cat)));
-        if (!items.length) return null;
-        return (
-          <section key={cat}>
-            <h3>{cat}</h3>
-            <ul>
-              {items.map((b) => {
-                const preview = { id: 'p', type: b.type, params: defaultParams(b.type), x: 0, y: 0 };
-                const { w, h } = blockSize(preview);
-                const scale = Math.min(1, 44 / w, 34 / h);
-                return (
-                  <li key={b.type}>
-                    <button
-                      type="button"
-                      draggable
-                      onDragStart={(e) => { e.dataTransfer.setData('application/x-fulgur-block', b.type); e.dataTransfer.effectAllowed = 'copy'; }}
-                      onClick={() => onAdd(b.type)}
-                      title={b.description}
-                    >
-                      <svg width={48} height={36} viewBox={`0 0 48 36`} aria-hidden className="palette-glyph">
-                        <g transform={`translate(${(48 - w * scale) / 2},${(36 - h * scale) / 2}) scale(${scale})`}>
-                          <BlockGlyph block={preview} />
-                        </g>
-                      </svg>
-                      <span>{b.label}</span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        );
-      })}
+    <nav className="palette" aria-label="Library browser">
+      <div className="panel-title">Library Browser</div>
+      <div className="palette-searchbar">
+        <input className="palette-search" placeholder="Find a block" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Find a block" />
+      </div>
+      <div className="palette-tree">
+        {CATEGORIES.map((cat) => {
+          const items = BLOCKS.filter((b) => b.category === cat && (!query || match(b.label) || match(b.description) || match(cat)));
+          if (!items.length) return null;
+          const open = !!query || !collapsed.has(cat);
+          return (
+            <section key={cat}>
+              <button type="button" className="palette-group" aria-expanded={open} onClick={() => toggle(cat)}>
+                <span aria-hidden className="caret">{open ? '▾' : '▸'}</span>
+                <span>{cat}</span>
+                <span className="count">{items.length}</span>
+              </button>
+              {open && (
+                <ul>
+                  {items.map((b) => (
+                    <li key={b.type}>
+                      <button
+                        type="button"
+                        draggable
+                        onDragStart={(e) => { e.dataTransfer.setData('application/x-fulgur-block', b.type); e.dataTransfer.effectAllowed = 'copy'; }}
+                        onClick={() => onAdd(b.type)}
+                        title={b.description}
+                      >
+                        <LibraryIcon type={b.type} />
+                        <span>{b.label}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          );
+        })}
+      </div>
     </nav>
+  );
+}
+
+/** The block icon in the design's 64x48 box: body at x 8.5-55.5, y 4.5-43.5, chevrons outside. */
+function LibraryIcon({ type }: { type: string }) {
+  const block = { id: 'p', type, params: defaultParams(type), x: 0, y: 0 };
+  const { w, h } = blockSize(block);
+  const s = Math.min(47 / w, 39 / h);
+  const { inputs, outputs } = ports(block);
+  const left = 32 - (w * s) / 2, right = 32 + (w * s) / 2;
+  const chev = (x: number, dir: 1 | -1, i: number, n: number) => {
+    const y0 = 24 - (h * s) / 2 + ((h * s) * (i + 1)) / (n + 1);
+    return <path key={`${dir}${i}`} d={`M${x},${y0 - 4} L${x + 5 * dir},${y0} L${x},${y0 + 4}`} className="icon-chevron" />;
+  };
+  return (
+    <svg width={44} height={33} viewBox="0 0 64 48" aria-hidden className="palette-glyph">
+      <g transform={`translate(${left},${24 - (h * s) / 2}) scale(${s})`}>
+        <BlockGlyph block={block} />
+      </g>
+      {Array.from({ length: inputs }, (_, i) => chev(left - 6, 1, i, inputs))}
+      {Array.from({ length: outputs }, (_, i) => chev(right + 1, 1, i, outputs))}
+    </svg>
   );
 }

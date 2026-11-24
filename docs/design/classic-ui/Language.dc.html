@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>fulgurlab classic — design language</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div style="width: 1200px; height: 820px; box-sizing: border-box; padding: 40px 48px; background: #F0F0F0; font-family: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif; font-size: 12px; color: #000; display: flex; flex-direction: column; gap: 28px">
+
+  <div style="display: flex; align-items: baseline; gap: 16px; border-bottom: 1px solid #ABABAB; padding-bottom: 12px">
+    <h1 style="margin: 0; font-size: 22px; font-weight: 600">fulgurlab classic</h1>
+    <p style="margin: 0; color: #444; font-size: 13px">Engineering-desktop chrome, white schematic canvas, black oscilloscope. Grey frames the tool, white holds the model, black holds the data.</p>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px">
+
+    <!-- Chrome palette -->
+    <section style="display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-size: 13px; font-weight: 600">Chrome &amp; canvas</h2>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+        <div style="display: flex; gap: 8px; align-items: center"><span style="width: 32px; height: 32px; background: #F0F0F0; border: 1px solid #ABABAB"></span><span><strong style="font-weight: 500">--chrome</strong><br><span style="font-family: 'IBM Plex Mono', monospace; color: #444">#F0F0F0</span></span></div>
+        <div style="display: flex; gap: 8px; align-items: center"><span style="width: 32px; height: 32px; background: #FFFFFF; border: 1px solid #ABABAB"></span><span><strong style="font-weight: 500">--canvas</strong><br><span style="font-family: 'IBM Plex Mono', monospace; color: #444">#FFFFFF</span></span></div>
+        <div style="display: flex; gap: 8px; align-items: center"><span style="width: 32px; height: 32px; background: #ABABAB"></span><span><strong style="font-weight: 500">--frame</strong><br><span style="font-family: 'IBM Plex Mono', monospace; color: #444">#ABABAB</span></span></div>
+        <div style="display: flex; gap: 8px; align-items: center"><span style="width: 32px; height: 32px; background: #D9D9D9"></span><span><strong style="font-weight: 500">--rule</strong><br><span style="font-family: 'IBM Plex Mono', monospace; color: #444">#D9D9D9</span></span></div>
+        <div style="display: flex; gap: 8px; align-items: center"><span style="width: 32px; height: 32px; background: #000000"></span><span><strong style="font-weight: 500">--ink</strong><br><span style="font-family: 'IBM Plex Mono', monospace; color: #444">#000000</span></span></div>
+        <div style="display: flex; gap: 8px; align-items: center"><span style="width: 32px; height: 32px; background: #0A64C8"></span><span><strong style="font-weight: 500">--select</strong><br><span style="font-family: 'IBM Plex Mono', monospace; color: #444">#0A64C8</span></span></div>
+        <div style="display: flex; gap: 8px; align-items: center"><span style="width: 32px; height: 32px; background: #E5F1FB; border: 1px solid #7EB4EA"></span><span><strong style="font-weight: 500">--hover</strong><br><span style="font-family: 'IBM Plex Mono', monospace; color: #444">#E5F1FB / #7EB4EA</span></span></div>
+        <div style="display: flex; gap: 8px; align-items: center"><span style="width: 32px; height: 32px; background: #1E8F3A"></span><span><strong style="font-weight: 500">--run</strong><br><span style="font-family: 'IBM Plex Mono', monospace; color: #444">#1E8F3A</span></span></div>
+        <div style="display: flex; gap: 8px; align-items: center"><span style="width: 32px; height: 32px; background: #C42B1C"></span><span><strong style="font-weight: 500">--danger</strong><br><span style="font-family: 'IBM Plex Mono', monospace; color: #444">#C42B1C</span></span></div>
+        <div style="display: flex; gap: 8px; align-items: center"><span style="width: 32px; height: 32px; background: #FDE7E9; border: 1px solid #C42B1C"></span><span><strong style="font-weight: 500">--danger-weak</strong><br><span style="font-family: 'IBM Plex Mono', monospace; color: #444">#FDE7E9</span></span></div>
+      </div>
+    </section>
+
+    <!-- Scope palette -->
+    <section style="display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-size: 13px; font-weight: 600">Scope</h2>
+      <div style="background: #1A1A1A; padding: 12px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px">
+          <div style="display: flex; flex-direction: column; gap: 4px; color: #D4D4D4"><span style="height: 4px; background: #FFE600"></span><span style="font: 10px 'IBM Plex Mono', monospace">1 #FFE600</span></div>
+          <div style="display: flex; flex-direction: column; gap: 4px; color: #D4D4D4"><span style="height: 4px; background: #40C4FF"></span><span style="font: 10px 'IBM Plex Mono', monospace">2 #40C4FF</span></div>
+          <div style="display: flex; flex-direction: column; gap: 4px; color: #D4D4D4"><span style="height: 4px; background: #FF6EC7"></span><span style="font: 10px 'IBM Plex Mono', monospace">3 #FF6EC7</span></div>
+          <div style="display: flex; flex-direction: column; gap: 4px; color: #D4D4D4"><span style="height: 4px; background: #7CFC6A"></span><span style="font: 10px 'IBM Plex Mono', monospace">4 #7CFC6A</span></div>
+          <div style="display: flex; flex-direction: column; gap: 4px; color: #D4D4D4"><span style="height: 4px; background: #FF9A3C"></span><span style="font: 10px 'IBM Plex Mono', monospace">5 #FF9A3C</span></div>
+          <div style="display: flex; flex-direction: column; gap: 4px; color: #D4D4D4"><span style="height: 4px; background: #B39DFF"></span><span style="font: 10px 'IBM Plex Mono', monospace">6 #B39DFF</span></div>
+          <div style="display: flex; flex-direction: column; gap: 4px; color: #D4D4D4"><span style="height: 4px; background: #FFFFFF"></span><span style="font: 10px 'IBM Plex Mono', monospace">7 #FFFFFF</span></div>
+          <div style="display: flex; flex-direction: column; gap: 4px; color: #D4D4D4"><span style="height: 4px; background: #FF5252"></span><span style="font: 10px 'IBM Plex Mono', monospace">8 #FF5252</span></div>
+        </div>
+        <div style="display: flex; gap: 14px; font: 10px 'IBM Plex Mono', monospace; color: #D4D4D4; flex-wrap: wrap">
+          <span>plot #000000</span><span>surround #1A1A1A</span><span>grid #3A3A3A</span><span>ticks #D4D4D4</span>
+        </div>
+      </div>
+      <p style="margin: 0; color: #444; line-height: 1.5">Traces are 1.5 px, solid, in input order. The scope is the only dark surface in the app; light mode or dark mode, it stays black.</p>
+    </section>
+
+    <!-- Type -->
+    <section style="display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-size: 13px; font-weight: 600">Type</h2>
+      <div style="background: #FFFFFF; border: 1px solid #ABABAB; padding: 12px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; justify-content: space-between; align-items: baseline"><span style="font-size: 12px">Menus, toolbar, dialogs</span><span style="font: 10px 'IBM Plex Mono', monospace; color: #444">Plex Sans 12/400</span></div>
+        <div style="display: flex; justify-content: space-between; align-items: baseline"><span style="font-size: 12px; font-weight: 600">Panel headers</span><span style="font: 10px 'IBM Plex Mono', monospace; color: #444">Plex Sans 12/600</span></div>
+        <div style="display: flex; justify-content: space-between; align-items: baseline"><span style="font-size: 11px">Block &amp; signal labels</span><span style="font: 10px 'IBM Plex Mono', monospace; color: #444">Plex Sans 11/400</span></div>
+        <div style="display: flex; justify-content: space-between; align-items: baseline"><span style="font: 12px 'IBM Plex Mono', monospace">4.000  T=10.000</span><span style="font: 10px 'IBM Plex Mono', monospace; color: #444">Plex Mono 12 — numbers</span></div>
+        <div style="display: flex; justify-content: space-between; align-items: baseline"><span style="font: 10px 'IBM Plex Mono', monospace">0  2  4  6  8  10</span><span style="font: 10px 'IBM Plex Mono', monospace; color: #444">Plex Mono 10 — ticks</span></div>
+      </div>
+      <p style="margin: 0; color: #444; line-height: 1.5">One size does almost everything. Hierarchy comes from panels, rules and weight, never from big type.</p>
+    </section>
+  </div>
+
+  <div style="display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 28px; flex: 1">
+
+    <!-- Block anatomy -->
+    <section style="display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-size: 13px; font-weight: 600">Block anatomy</h2>
+      <div style="position: relative; flex: 1; background: #FFFFFF; border: 1px solid #ABABAB">
+        <svg width="100%" height="100%" viewBox="0 0 620 300" aria-hidden="true" style="display: block">
+          <defs><marker id="ah2" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#000"></path></marker></defs>
+          <path d="M30,120 H110" stroke="#000" fill="none" marker-end="url(#ah2)"></path>
+          <text x="66" y="112" font-size="11" font-family="IBM Plex Sans">u</text>
+          <path d="M110,92 L170,120 L110,148 Z" fill="#FFF" stroke="#000"></path>
+          <text x="128" y="124" font-size="12" font-family="IBM Plex Sans">2</text>
+          <text x="140" y="168" font-size="11" font-family="IBM Plex Sans" text-anchor="middle">Gain</text>
+          <path d="M170,120 H240" stroke="#000" fill="none" marker-end="url(#ah2)"></path>
+          <circle cx="205" cy="120" r="2.5" fill="#000"></circle>
+          <path d="M205,120 V210 H240" stroke="#000" fill="none" marker-end="url(#ah2)"></path>
+          <rect x="240" y="96" width="56" height="48" fill="#FFF" stroke="#000"></rect>
+          <text x="268" y="116" font-size="12" text-anchor="middle" font-family="IBM Plex Sans">1</text>
+          <path d="M256,121 H280" stroke="#000"></path>
+          <text x="268" y="136" font-size="12" text-anchor="middle" font-family="IBM Plex Sans">s</text>
+          <text x="268" y="162" font-size="11" text-anchor="middle" font-family="IBM Plex Sans">Integrator</text>
+          <rect x="236" y="92" width="64" height="56" fill="none" stroke="#0A64C8" stroke-dasharray="3 2"></rect>
+          <rect x="233" y="89" width="6" height="6" fill="#0A64C8"></rect><rect x="297" y="89" width="6" height="6" fill="#0A64C8"></rect><rect x="233" y="145" width="6" height="6" fill="#0A64C8"></rect><rect x="297" y="145" width="6" height="6" fill="#0A64C8"></rect>
+          <rect x="240" y="186" width="56" height="48" fill="#FDE7E9" stroke="#C42B1C" stroke-width="2"></rect>
+          <text x="268" y="214" font-size="12" text-anchor="middle" font-family="IBM Plex Sans">du/dt</text>
+          <text x="268" y="252" font-size="11" text-anchor="middle" font-family="IBM Plex Sans" fill="#C42B1C">Derivative</text>
+          <path d="M296,120 H350" stroke="#0A64C8" stroke-dasharray="5 4" fill="none"></path>
+          <circle cx="356" cy="120" r="5" fill="none" stroke="#0A64C8" stroke-width="2"></circle>
+
+          <g font-family="IBM Plex Sans" font-size="11" fill="#444">
+            <path d="M400,40 H600" stroke="#D9D9D9"></path>
+            <text x="400" y="62">1  Block: white fill, 1 px black outline, square</text>
+            <text x="400" y="80">    corners; Gain is a triangle, Sum a circle</text>
+            <text x="400" y="104">2  Label sits below the block, 11 px, centred</text>
+            <text x="400" y="128">3  Wire: 1 px black, orthogonal, filled arrowhead</text>
+            <text x="400" y="146">    into the input; signal name rides above</text>
+            <text x="400" y="170">4  Branch: 5 px solid junction dot</text>
+            <text x="400" y="194">5  Selected: dashed blue box + four 6 px handles</text>
+            <text x="400" y="218">6  Error: red 2 px outline, pale red fill, red label</text>
+            <text x="400" y="242">7  Drafting wire: dashed blue to a ringed port</text>
+          </g>
+        </svg>
+      </div>
+    </section>
+
+    <!-- Controls -->
+    <section style="display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-size: 13px; font-weight: 600">Controls</h2>
+      <div style="flex: 1; background: #F0F0F0; border: 1px solid #ABABAB; padding: 14px; display: flex; flex-direction: column; gap: 14px">
+        <div style="display: flex; align-items: center; gap: 10px">
+          <span style="display: inline-flex; width: 28px; height: 28px; align-items: center; justify-content: center; border: 1px solid transparent"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="1.6" aria-hidden="true"><path d="M4 4h13l3 3v13H4z"></path><path d="M8 4v5h8V4M7 20v-6h10v6"></path></svg></span>
+          <span style="display: inline-flex; width: 28px; height: 28px; align-items: center; justify-content: center; background: #E5F1FB; border: 1px solid #7EB4EA; border-radius: 2px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="1.6" aria-hidden="true"><path d="M4 4h13l3 3v13H4z"></path><path d="M8 4v5h8V4M7 20v-6h10v6"></path></svg></span>
+          <span style="display: inline-flex; width: 28px; height: 28px; align-items: center; justify-content: center; background: #CCE4F7; border: 1px solid #7EB4EA; border-radius: 2px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="1.6" aria-hidden="true"><path d="M4 4h13l3 3v13H4z"></path><path d="M8 4v5h8V4M7 20v-6h10v6"></path></svg></span>
+          <span style="display: inline-flex; width: 30px; height: 30px; align-items: center; justify-content: center; border-radius: 50%; background: #1E8F3A; border: 1px solid #136B2A"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 1.5l9 5.5-9 5.5z" fill="#FFFFFF"></path></svg></span>
+          <span style="color: #444">Icon button: rest · hover · on · Run</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap">
+          <span style="display: inline-flex; align-items: center; justify-content: center; min-width: 72px; height: 24px; background: #E1E1E1; border: 1px solid #0078D7; box-shadow: inset 0 0 0 1px #0078D7">OK</span>
+          <span style="display: inline-flex; align-items: center; justify-content: center; min-width: 72px; height: 24px; background: #E1E1E1; border: 1px solid #ADADAD">Cancel</span>
+          <span style="display: inline-flex; align-items: center; justify-content: center; min-width: 72px; height: 24px; background: #E5F1FB; border: 1px solid #0078D7">Apply</span>
+          <span style="color: #444; margin-left: 4px">Dialog buttons: default · rest · hover</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px">
+          <span style="display: inline-flex; align-items: center; justify-content: flex-end; width: 96px; height: 22px; box-sizing: border-box; padding: 0 4px; background: #FFFFFF; border: 1px solid #7A7A7A; font: 12px 'IBM Plex Mono', monospace">100</span>
+          <span style="display: inline-flex; align-items: center; justify-content: flex-end; width: 96px; height: 22px; box-sizing: border-box; padding: 0 4px; background: #FFFFFF; border: 1px solid #0078D7; font: 12px 'IBM Plex Mono', monospace">4</span>
+          <span style="display: inline-flex; align-items: center; justify-content: flex-end; width: 96px; height: 22px; box-sizing: border-box; padding: 0 4px; background: #FFFFFF; border: 1px solid #C42B1C; font: 12px 'IBM Plex Mono', monospace">1e</span>
+          <span style="color: #444">Field: rest · focus · invalid</span>
+        </div>
+        <fieldset style="margin: 0; padding: 6px 8px 8px; border: 1px solid #C8C8C8">
+          <legend style="padding: 0 4px">Group box</legend>
+          <span style="color: #444">Parameters are grouped in etched fieldsets, labels left, values right-aligned in mono.</span>
+        </fieldset>
+        <div style="display: flex; align-items: center; height: 22px; padding: 0 8px; background: #F0F0F0; border: 1px solid #ABABAB">
+          <span style="flex: 1">Ready</span>
+          <span style="padding: 0 10px; border-left: 1px solid #C8C8C8">100%</span>
+          <span style="padding-left: 10px; border-left: 1px solid #C8C8C8; color: #0A58B8">LSODAR</span>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1200,"height":820}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

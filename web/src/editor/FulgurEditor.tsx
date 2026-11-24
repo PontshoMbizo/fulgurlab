@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BLOCK_MAP } from '../../../shared/catalog.js';
+import { BLOCK_MAP, LIMITS } from '../../../shared/catalog.js';
 import type { Block, Issue, Netlist, Selection, SimResult } from './types';
-import { Canvas } from './Canvas';
+import { Canvas, type CanvasControls } from './Canvas';
 import { Palette } from './Palette';
 import { Inspector } from './Inspector';
-import { ScopeChart } from './ScopeChart';
+import { downloadCsv } from './ScopeChart';
+import { ScopePanel } from './ScopePanel';
+import { MenuBar, type MenuDef } from './Menus';
+import * as I from './Icons';
 import { runSimulation } from './api';
 import { emptyNetlist, makeBlock, ports, pruneLinks, snap, toWire } from './model';
 
@@ -37,9 +40,17 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
   const abort = useRef<AbortController | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const center = useRef<(() => { x: number; y: number }) | null>(null);
+  const canvasControls = useRef<CanvasControls | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const [showLibrary, setShowLibrary] = useState(true);
+  const [scopePopped, setScopePopped] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  /** the model as last loaded or saved, to mark unsaved changes with * */
+  const [savedNet, setSavedNet] = useState(net);
+  const dirty = net !== savedNet;
 
   const load = useCallback((n: Netlist) => {
-    setNet(n); committed.current = n; undo.current = []; redo.current = [];
+    setNet(n); setSavedNet(n); committed.current = n; undo.current = []; redo.current = [];
     setSelection(null); setResult(null); setViewKey((k) => k + 1);
   }, []);
 
@@ -125,6 +136,8 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
     }
   };
 
+  const stop = () => { abort.current?.abort(); abort.current = null; setRunning(false); };
+
   // keyboard shortcuts (ignored while typing in a field)
   const runRef = useRef(run); runRef.current = run;
   const keysRef = useRef({ deleteSelection, doUndo, doRedo, duplicate });
@@ -177,6 +190,7 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
     a.download = `${(net.name || 'model').replace(/[^\w-]+/g, '_')}.fulgur.json`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    setSavedNet(net);
   };
   const open = async (f: File) => {
     try {
@@ -190,39 +204,119 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
     }
   };
 
+  const hasScopes = !!result?.ok && Object.keys(result.scopes).length > 0;
+  const exportCsv = () => {
+    if (!result?.ok) return;
+    for (const [id, tr] of Object.entries(result.scopes)) downloadCsv(net.blocks.find((x) => x.id === id)?.name || id, traceNames(id), tr);
+  };
+  const canRun = !running && net.blocks.length > 0;
+  const chooseFile = () => fileInput.current?.click();
+  const loadExample = (i: number) => { const ex = examples[i]; if (ex) load(structuredClone(ex.netlist)); };
+
+  const menus: MenuDef[] = [
+    { label: 'File', mnemonic: 0, items: [
+      { label: 'New', onSelect: () => load(emptyNetlist()) },
+      { label: 'Open…', onSelect: chooseFile },
+      { label: 'Save', onSelect: save },
+    ] },
+    { label: 'Edit', mnemonic: 0, items: [
+      { label: 'Undo', shortcut: 'Ctrl+Z', disabled: !undo.current.length, onSelect: doUndo },
+      { label: 'Redo', shortcut: 'Ctrl+Y', disabled: !redo.current.length, onSelect: doRedo },
+      { label: 'Duplicate', shortcut: 'Ctrl+D', disabled: selection?.kind !== 'block', onSelect: duplicate },
+      { label: 'Delete', shortcut: 'Del', disabled: !selection, onSelect: deleteSelection },
+    ] },
+    { label: 'View', mnemonic: 0, items: [
+      { label: 'Zoom in', onSelect: () => canvasControls.current?.zoomIn() },
+      { label: 'Zoom out', onSelect: () => canvasControls.current?.zoomOut() },
+      { label: 'Fit', onSelect: () => canvasControls.current?.fit() },
+      { label: 'Library', checked: showLibrary, onSelect: () => setShowLibrary((v) => !v) },
+      { label: scopePopped ? 'Dock Scope' : 'Pop out Scope', onSelect: () => setScopePopped((v) => !v) },
+    ] },
+    { label: 'Simulation', mnemonic: 0, items: [
+      { label: 'Run', shortcut: 'Ctrl+Enter', disabled: !canRun, onSelect: run },
+      { label: 'Stop', disabled: !running, onSelect: stop },
+      { label: 'Model settings…', onSelect: () => setSelection(null) },
+    ] },
+    ...(examples.length ? [{ label: 'Examples', mnemonic: 1, items: examples.map((ex, i) => ({ label: ex.name, onSelect: () => loadExample(i) })) }] : []),
+    { label: 'Help', mnemonic: 0, items: [{ label: 'Keyboard shortcuts', onSelect: () => setHelpOpen(true) }] },
+  ];
+
+  const status = running ? 'Simulating…'
+    : result && !result.ok ? result.error
+    : stale ? 'The diagram changed since this run. Run again to update.'
+    : 'Ready';
+  const tb = (label: string, icon: React.ReactNode, onClick: () => void, opts: { disabled?: boolean; pressed?: boolean } = {}) => (
+    <button type="button" className="tb" aria-label={label} title={label} onClick={onClick} disabled={opts.disabled} aria-pressed={opts.pressed}>{icon}</button>
+  );
+
   return (
     <div className={`fulgur ${compact ? 'is-compact' : ''}`}>
-      <header className="toolbar">
-        <div className="brand"><span className="brand-mark" aria-hidden />fulgurlab</div>
-        <span className="model-name">{net.name}</span>
-        {!compact && (
-          <div className="toolbar-group">
-            <button type="button" onClick={() => load(emptyNetlist())}>New</button>
-            <button type="button" onClick={() => fileInput.current?.click()}>Open…</button>
-            <button type="button" onClick={save}>Save</button>
-            <input ref={fileInput} type="file" accept=".json,application/json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) open(f); e.target.value = ''; }} />
-            {examples.length > 0 && (
-              <select aria-label="Load an example" value="" onChange={(e) => { const ex = examples[Number(e.target.value)]; if (ex) load(structuredClone(ex.netlist)); }}>
-                <option value="">Examples…</option>
-                {examples.map((ex, i) => <option key={i} value={i}>{ex.name}</option>)}
-              </select>
-            )}
-          </div>
-        )}
-        <div className="toolbar-group">
-          <button type="button" onClick={doUndo} disabled={!undo.current.length} aria-label="Undo">Undo</button>
-          <button type="button" onClick={doRedo} disabled={!redo.current.length} aria-label="Redo">Redo</button>
+      {!compact && (
+        <div className="menubar">
+          <div className="brand"><I.BrandMark />fulgurlab</div>
+          <MenuBar menus={menus} />
+          <span className="model-name" title={net.name}>{net.name}{dirty ? ' *' : ''}</span>
         </div>
-        <div className="toolbar-run">
-          <span className="sim-time">0 → {net.settings.tf} s</span>
-          <button type="button" className="primary" onClick={run} disabled={running || net.blocks.length === 0}>
-            {running ? 'Simulating…' : 'Run'}
-          </button>
-        </div>
-      </header>
+      )}
 
-      <div className="workspace">
-        <Palette onAdd={(t) => addBlock(t)} />
+      <div className="toolbar" role="toolbar" aria-label="Model toolbar">
+        {!compact && (
+          <>
+            {tb('New model', <I.IconNew />, () => load(emptyNetlist()))}
+            {tb('Open model', <I.IconOpen />, chooseFile)}
+            {tb('Save model', <I.IconSave />, save)}
+            <span className="tb-sep" aria-hidden />
+            <input ref={fileInput} type="file" accept=".json,application/json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) open(f); e.target.value = ''; }} />
+          </>
+        )}
+        {tb('Undo', <I.IconUndo />, doUndo, { disabled: !undo.current.length })}
+        {tb('Redo', <I.IconRedo />, doRedo, { disabled: !redo.current.length })}
+        <span className="tb-sep" aria-hidden />
+        {tb('Library browser', <I.IconLibrary />, () => setShowLibrary((v) => !v), { pressed: showLibrary })}
+        {tb('Model settings', <I.IconSettings />, () => setSelection(null))}
+        <span className="tb-sep" aria-hidden />
+        <button type="button" className="run-btn" aria-label="Run simulation (Ctrl+Enter)" title="Run (Ctrl+Enter)" onClick={run} disabled={!canRun}><I.IconRun /></button>
+        {tb('Stop simulation', <I.IconStop />, stop, { disabled: !running })}
+        <span className="tb-sep" aria-hidden />
+        <NumberField
+          label="Stop time" unit="s" aria="Stop time in seconds" width={64}
+          value={net.settings.tf}
+          valid={(v) => v > 0 && v <= LIMITS.maxTf}
+          onCommit={(v) => update({ ...net, settings: { ...net.settings, tf: v } })}
+        />
+        <NumberField
+          label="Step" aria="Scope sample step in seconds" width={52}
+          value={net.settings.dt}
+          valid={(v) => v >= LIMITS.minDt}
+          onCommit={(v) => update({ ...net, settings: { ...net.settings, dt: v } })}
+        />
+        <label className="tb-field">
+          <span>Solver</span>
+          <select aria-label="Solver" disabled value="lsodar" onChange={() => undefined}>
+            <option value="lsodar">LSODAR (auto)</option>
+          </select>
+        </label>
+        <span className="tb-sep" aria-hidden />
+        {tb(scopePopped ? 'Dock scope' : 'Open scope', <I.IconScope />, () => setScopePopped((v) => !v), { pressed: scopePopped })}
+        {tb('Export CSV', <I.IconDownload />, exportCsv, { disabled: !hasScopes })}
+      </div>
+
+      {!compact && (
+        <>
+          <div className="tabstrip" role="tablist" aria-label="Open models">
+            <div className="tab is-active" role="tab" aria-selected="true" tabIndex={0}>{net.name}{dirty ? ' *' : ''}</div>
+          </div>
+          <div className="pathbar">
+            <button type="button" className="tb tb-small" aria-label={showLibrary ? 'Hide library' : 'Show library'} title={showLibrary ? 'Hide library' : 'Show library'} onClick={() => setShowLibrary((v) => !v)}>
+              <span className={showLibrary ? '' : 'flip'}><I.IconChevronLeft /></span>
+            </button>
+            <div className="path"><I.BrandMark size={14} /><span>{net.name}</span></div>
+          </div>
+        </>
+      )}
+
+      <div className={`workspace ${showLibrary ? '' : 'no-library'}`}>
+        {showLibrary && <Palette onAdd={(t) => addBlock(t)} />}
         <Canvas
           net={net}
           selection={selection}
@@ -232,35 +326,106 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
           onDropType={(t, x, y) => addBlock(t, x, y)}
           loadKey={viewKey}
           centerRef={center}
+          controlsRef={canvasControls}
+          onZoom={setZoom}
         />
-        <Inspector net={net} selection={selection} issues={issues} onBlockChange={changeBlock} onSettings={(p) => update({ ...net, ...p })} onDelete={deleteSelection} />
+        <Inspector net={net} selection={selection} issues={issues} onBlockChange={changeBlock} onSettings={(p) => update({ ...net, ...p })} onDelete={deleteSelection} onClose={() => setSelection(null)} />
       </div>
 
-      <section className={`results ${result ? 'has-result' : ''}`} aria-live="polite">
-        {!result && !running && <p className="muted">Press Run (Ctrl+Enter) to simulate. Results from each Scope appear here.</p>}
-        {running && !result && <p className="muted">Simulating with Scilab…</p>}
-        {result && !result.ok && (
-          <div className="sim-error" role="alert">
-            <strong>{result.error}</strong>
-            {result.issues && result.issues.length > 0 && <ul>{result.issues.map((i, k) => <li key={k}>{i.message}</li>)}</ul>}
-            {result.log && <details><summary>Scilab output</summary><pre>{result.log}</pre></details>}
-          </div>
-        )}
-        {result?.ok && (
-          <>
-            <div className="results-meta">
-              <span>Simulated in {(result.elapsedMs / 1000).toFixed(2)} s</span>
-              {stale && <span className="stale">The diagram changed since this run. Run again to update.</span>}
+      {(!result || !result.ok || Object.keys(result.scopes).length === 0) && (
+        <section className="results" aria-live="polite">
+          {!result && !running && <p className="muted">Press Run (Ctrl+Enter) to simulate. Results from each Scope appear here.</p>}
+          {running && !result && <p className="muted">Simulating with Scilab…</p>}
+          {result && !result.ok && (
+            <div className="sim-error" role="alert">
+              <strong>{result.error}</strong>
+              {result.issues && result.issues.length > 0 && <ul>{result.issues.map((i, k) => <li key={k}>{i.message}</li>)}</ul>}
+              {result.log && <details><summary>Scilab output</summary><pre>{result.log}</pre></details>}
             </div>
-            <div className="scopes">
-              {Object.entries(result.scopes).map(([id, tr]) => {
-                const b = net.blocks.find((x) => x.id === id);
-                return <ScopeChart key={id} title={b?.name || id} trace={tr} names={traceNames(id)} />;
-              })}
-            </div>
-          </>
-        )}
-      </section>
+          )}
+          {result?.ok && <p className="muted">The diagram ran, but it has no Scope block to plot.</p>}
+        </section>
+      )}
+      {result?.ok && Object.keys(result.scopes).length > 0 && (
+        <ScopePanel
+          scopes={Object.entries(result.scopes).map(([id, trace]) => ({ id, title: net.blocks.find((x) => x.id === id)?.name || id, names: traceNames(id), trace }))}
+          tf={net.settings.tf}
+          popped={scopePopped}
+          onTogglePop={() => setScopePopped((v) => !v)}
+        />
+      )}
+
+      <footer className="statusbar" role="status">
+        <span className={`status-main ${result && !result.ok ? 'is-error' : ''}`}>{status}</span>
+        {result?.ok && <span className="status-cell">Simulated in {(result.elapsedMs / 1000).toFixed(2)} s</span>}
+        <span className="status-cell">{Math.round(zoom * 100)}%</span>
+        <span className="status-cell mono">T={net.settings.tf.toFixed(3)}</span>
+        <span className="status-cell status-solver">LSODAR</span>
+      </footer>
+
+      {helpOpen && <ShortcutsDialog onClose={() => setHelpOpen(false)} />}
+    </div>
+  );
+}
+
+/** Mono, right-aligned number input that commits a valid draft on blur or Enter. */
+function NumberField({ label, unit, aria, width, value, valid, onCommit }: {
+  label: string; unit?: string; aria: string; width: number; value: number;
+  valid: (v: number) => boolean; onCommit: (v: number) => void;
+}) {
+  const [draft, setDraft] = useState(String(value));
+  useEffect(() => setDraft(String(value)), [value]);
+  const v = Number(draft);
+  const ok = draft.trim() !== '' && Number.isFinite(v) && valid(v);
+  const commit = () => { if (ok && v !== value) onCommit(v); else if (!ok) setDraft(String(value)); };
+  return (
+    <label className="tb-field">
+      <span>{label}</span>
+      <input
+        className="num"
+        style={{ width }}
+        value={draft}
+        aria-label={aria}
+        aria-invalid={!ok}
+        inputMode="decimal"
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { commit(); (e.target as HTMLInputElement).blur(); }
+          if (e.key === 'Escape') { setDraft(String(value)); (e.target as HTMLInputElement).blur(); }
+        }}
+      />
+      {unit && <span>{unit}</span>}
+    </label>
+  );
+}
+
+const SHORTCUTS: [string, string][] = [
+  ['Ctrl+Enter', 'Run the simulation'],
+  ['Ctrl+Z', 'Undo'],
+  ['Ctrl+Y / Ctrl+Shift+Z', 'Redo'],
+  ['Ctrl+D', 'Duplicate the selected block'],
+  ['Delete / Backspace', 'Delete the selection'],
+  ['Escape', 'Clear the selection'],
+  ['Mouse wheel', 'Zoom the diagram'],
+];
+
+function ShortcutsDialog({ onClose }: { onClose: () => void }) {
+  const ok = useRef<HTMLButtonElement>(null);
+  useEffect(() => { ok.current?.focus(); }, []);
+  return (
+    <div className="dialog-scrim" onPointerDown={onClose}>
+      <div
+        className="dialog" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts"
+        onPointerDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}
+      >
+        <div className="dialog-title">Keyboard shortcuts</div>
+        <dl className="shortcuts">
+          {SHORTCUTS.map(([k, d]) => (<div key={k}><dt>{k}</dt><dd>{d}</dd></div>))}
+        </dl>
+        <div className="dialog-buttons"><button type="button" className="btn is-default" ref={ok} onClick={onClose}>OK</button></div>
+      </div>
     </div>
   );
 }

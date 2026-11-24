@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Block, Link, Netlist, PortRef, Selection } from './types';
 import { BlockGlyph } from './BlockGlyph';
+import { IconFit, IconZoomIn, IconZoomOut } from './Icons';
 import { blockSize, inPortPos, outPortPos, ports, snap, wirePath } from './model';
 
 interface Props {
@@ -15,14 +16,20 @@ interface Props {
   loadKey: number;
   /** filled with a function returning the visible centre, in diagram coordinates */
   centerRef?: React.MutableRefObject<(() => { x: number; y: number }) | null>;
+  /** filled with zoom commands so menus and toolbars outside the canvas can drive it */
+  controlsRef?: React.MutableRefObject<CanvasControls | null>;
+  /** reports the zoom factor (1 = 100%) whenever it changes */
+  onZoom?: (k: number) => void;
 }
+
+export interface CanvasControls { zoomIn: () => void; zoomOut: () => void; fit: () => void }
 
 type Drag =
   | { kind: 'move'; id: string; dx: number; dy: number; moved: boolean }
   | { kind: 'wire'; from: PortRef; x: number; y: number }
   | { kind: 'pan'; sx: number; sy: number; ox: number; oy: number };
 
-export function Canvas({ net, selection, errorBlocks, onChange, onSelect, onDropType, loadKey, centerRef }: Props) {
+export function Canvas({ net, selection, errorBlocks, onChange, onSelect, onDropType, loadKey, centerRef, controlsRef, onZoom }: Props) {
   const svg = useRef<SVGSVGElement>(null);
   const [view, setView] = useState({ x: 0, y: 0, k: 1 });
   const [drag, setDrag] = useState<Drag | null>(null);
@@ -139,7 +146,21 @@ export function Canvas({ net, selection, errorBlocks, onChange, onSelect, onDrop
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadKey]);
 
+  const zoomBy = (f: number) => setView((v) => ({ ...v, k: Math.min(2.5, Math.max(0.3, v.k * f)) }));
+  if (controlsRef) controlsRef.current = { zoomIn: () => zoomBy(1.2), zoomOut: () => zoomBy(1 / 1.2), fit };
+  useEffect(() => { onZoom?.(view.k); }, [view.k]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const driven = new Set(net.links.map((l) => `${l.to.block}:${l.to.port}`));
+  /** outputs feeding more than one wire get a solid junction dot at the branch */
+  const fanout = new Map<string, { n: number; x: number; y: number }>();
+  for (const l of net.links) {
+    const src = byId.get(l.from.block);
+    if (!src) continue;
+    const k = `${l.from.block}:${l.from.port}`;
+    const c = fanout.get(k);
+    if (c) c.n++; else fanout.set(k, { n: 1, ...outPortPos(src, l.from.port) });
+  }
+  const used = new Set(net.links.map((l) => `${l.from.block}:${l.from.port}`));
 
   return (
     <div
@@ -153,6 +174,11 @@ export function Canvas({ net, selection, errorBlocks, onChange, onSelect, onDrop
         onDropType(type, p.x - 40, p.y - 28);
       }}
     >
+      <div className="canvas-tools" role="toolbar" aria-label="Canvas tools" aria-orientation="vertical">
+        <button type="button" className="tb" onClick={() => zoomBy(1.2)} aria-label="Zoom in" title="Zoom in"><IconZoomIn /></button>
+        <button type="button" className="tb" onClick={() => zoomBy(1 / 1.2)} aria-label="Zoom out" title="Zoom out"><IconZoomOut /></button>
+        <button type="button" className="tb" onClick={fit} aria-label="Fit to view" title="Fit to view"><IconFit /></button>
+      </div>
       <svg
         ref={svg}
         className={`canvas ${drag?.kind === 'pan' ? 'is-panning' : ''}`}
@@ -164,17 +190,13 @@ export function Canvas({ net, selection, errorBlocks, onChange, onSelect, onDrop
         aria-label="Block diagram canvas"
       >
         <defs>
-          <pattern id="dots" width={16 * view.k} height={16 * view.k} patternUnits="userSpaceOnUse" x={view.x} y={view.y}>
-            <circle cx={1} cy={1} r={1} className="grid-dot" />
-          </pattern>
-          <marker id="arrow" viewBox="0 0 8 8" refX="7.5" refY="4" markerWidth="8" markerHeight="8" orient="auto">
+          <marker id="arrow" viewBox="0 0 8 8" refX="7.5" refY="4" markerWidth="7" markerHeight="7" markerUnits="userSpaceOnUse" orient="auto">
             <path d="M0,0 L8,4 L0,8 z" className="wire-head" />
           </marker>
-          <marker id="arrow-sel" viewBox="0 0 8 8" refX="7.5" refY="4" markerWidth="8" markerHeight="8" orient="auto">
+          <marker id="arrow-sel" viewBox="0 0 8 8" refX="7.5" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto">
             <path d="M0,0 L8,4 L0,8 z" className="wire-head is-selected" />
           </marker>
         </defs>
-        <rect width="100%" height="100%" fill="url(#dots)" />
         <g transform={`translate(${view.x},${view.y}) scale(${view.k})`}>
           {net.links.map((l, i) => {
             const s = byId.get(l.from.block), d = byId.get(l.to.block);
@@ -188,11 +210,18 @@ export function Canvas({ net, selection, errorBlocks, onChange, onSelect, onDrop
               </g>
             );
           })}
+          {[...fanout].filter(([, c]) => c.n > 1).map(([k, c]) => <circle key={k} cx={c.x} cy={c.y} r={2.5} className="junction" />)}
           {drag?.kind === 'wire' && byId.get(drag.from.block) && (
-            <path
-              d={wirePath(byId.get(drag.from.block)!, drag.from.port, hoverIn ? byId.get(hoverIn.block)! : null, hoverIn?.port ?? 0, { x: drag.x, y: drag.y })}
-              className="wire is-drafting"
-            />
+            <>
+              <path
+                d={wirePath(byId.get(drag.from.block)!, drag.from.port, hoverIn ? byId.get(hoverIn.block)! : null, hoverIn?.port ?? 0, { x: drag.x, y: drag.y })}
+                className="wire is-drafting"
+              />
+              {(() => {
+                const t = hoverIn && byId.get(hoverIn.block) ? inPortPos(byId.get(hoverIn.block)!, hoverIn.port) : { x: drag.x, y: drag.y };
+                return <circle cx={t.x} cy={t.y} r={5} className="draft-target" />;
+              })()}
+            </>
           )}
           {net.blocks.map((b) => {
             const { w, h } = blockSize(b);
@@ -203,23 +232,27 @@ export function Canvas({ net, selection, errorBlocks, onChange, onSelect, onDrop
                 <g onPointerDown={(e) => startMove(e, b)} className="block-body">
                   <BlockGlyph block={b} />
                 </g>
-                <text x={w / 2} y={h + 16} textAnchor="middle" className="block-name">{b.name || b.id}</text>
+                {sel && (
+                  <g pointerEvents="none" className="selection">
+                    <rect x={-4} y={-4} width={w + 8} height={h + 8} className="select-box" />
+                    {[[-4, -4], [w + 4, -4], [-4, h + 4], [w + 4, h + 4]].map(([hx, hy], i) => (
+                      <rect key={i} x={hx - 3} y={hy - 3} width={6} height={6} className="select-handle" />
+                    ))}
+                  </g>
+                )}
+                <text x={w / 2} y={h + (sel ? 20 : 15)} textAnchor="middle" className="block-name">{b.name || b.id}</text>
                 {Array.from({ length: inputs }, (_, i) => {
                   const p = inPortPos(b, i);
                   const hot = hoverIn?.block === b.id && hoverIn.port === i;
                   if (driven.has(`${b.id}:${i}`) && !hot) return null;
-                  return (
-                    <g key={`i${i}`}>
-                      <path d={`M${p.x - b.x - 1},${p.y - b.y - 5} L${p.x - b.x + 5},${p.y - b.y} L${p.x - b.x - 1},${p.y - b.y + 5}`} className={`port-in ${driven.has(`${b.id}:${i}`) ? 'is-driven' : ''} ${hot ? 'is-hot' : ''}`} />
-                    </g>
-                  );
+                  return <path key={`i${i}`} transform={`translate(${p.x - b.x - 6},${p.y - b.y})`} d="M0,-4 L5,0 L0,4" className={`port-in ${hot ? 'is-hot' : ''}`} />;
                 })}
                 {Array.from({ length: outputs }, (_, i) => {
                   const p = outPortPos(b, i);
                   return (
                     <g key={`o${i}`} onPointerDown={(e) => startWire(e, b, i)} className="port-out-hit">
-                      <circle cx={p.x - b.x} cy={p.y - b.y} r={10} className="port-target" />
-                      <path d={`M${p.x - b.x},${p.y - b.y - 5} L${p.x - b.x + 6},${p.y - b.y} L${p.x - b.x},${p.y - b.y + 5}`} className="port-out" />
+                      <circle cx={p.x - b.x + 3} cy={p.y - b.y} r={10} className="port-target" />
+                      {!used.has(`${b.id}:${i}`) && <path transform={`translate(${p.x - b.x + 1.5},${p.y - b.y})`} d="M0,-4 L5,0 L0,4" className="port-out" />}
                     </g>
                   );
                 })}
@@ -233,11 +266,6 @@ export function Canvas({ net, selection, errorBlocks, onChange, onSelect, onDrop
           <p>Drag blocks here from the library, then drag from a block's output arrow to another block's input to wire them.</p>
         </div>
       )}
-      <div className="canvas-tools">
-        <button type="button" onClick={() => setView((v) => ({ ...v, k: Math.min(2.5, v.k * 1.2) }))} aria-label="Zoom in">+</button>
-        <button type="button" onClick={() => setView((v) => ({ ...v, k: Math.max(0.3, v.k / 1.2) }))} aria-label="Zoom out">−</button>
-        <button type="button" onClick={fit}>Fit</button>
-      </div>
     </div>
   );
 }
