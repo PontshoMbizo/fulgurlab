@@ -104,7 +104,7 @@ podman run --rm fulgurlab sh -c "cd server && node --test test/*.test.js"
 
 ## Limits
 
-- Each run starts a new Scilab process, so even a tiny diagram takes about 0.2 s. A warm pool of Scilab processes would remove most of that and has not been built.
+- Runs go through a pool of warm Scilab workers (`server/src/pool.js`): a repeat run of a small diagram takes about 25 ms instead of 150 ms, and the first run after startup pays the 0.2 s start. A worker is retired after 50 runs, or at once after a timeout or crash. `SIM_POOL=0` goes back to one process per run.
 - There is no per-client rate limiting and no network namespace for the Scilab process yet. Put the server behind scope.io's API gateway, or add both, before exposing it publicly.
 - Limits per run: 200 blocks, 1 million samples per scope, 2 million in total.
 - It is pinned to Scilab 2024.0 from Ubuntu. Upstream is newer, and the tests are the regression check before any upgrade.

@@ -118,3 +118,17 @@ test('algebraic loops come back as a readable error', opts, async () => {
   };
   await assert.rejects(simulate(validateNetlist(net)), /[Aa]lgebraic loop/);
 });
+
+test('a failed run does not poison the next one (warm worker reuse)', opts, async () => {
+  const bad = validateNetlist({ settings: { tf: 1, dt: 0.01 }, blocks: [
+    { id: 'c', type: 'constant' }, { id: 's', type: 'sum', params: { signs: '++' } },
+    { id: 'g', type: 'gain', params: { k: 1 } }, { id: 'sc', type: 'scope' }],
+  links: [
+    { from: { block: 'c', port: 0 }, to: { block: 's', port: 0 } },
+    { from: { block: 'g', port: 0 }, to: { block: 's', port: 1 } },
+    { from: { block: 's', port: 0 }, to: { block: 'g', port: 0 } },
+    { from: { block: 's', port: 0 }, to: { block: 'sc', port: 0 } }] });
+  await assert.rejects(() => simulate(bad), /lgebraic loop/);
+  const sc = await chain({ type: 'constant', params: { value: 3 } }, null, 1);
+  close(at(sc, 1), 3, 1e-6, 'constant after a failed run');
+});

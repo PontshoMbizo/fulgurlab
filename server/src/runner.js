@@ -12,6 +12,7 @@ import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir, availableParallelism } from 'node:os';
 import { join } from 'node:path';
 import { generate } from './codegen.js';
+import { Pool } from './pool.js';
 
 export const config = {
   scilab: process.env.SCILAB_BIN || 'scilab-cli',
@@ -19,7 +20,20 @@ export const config = {
   concurrency: Number(process.env.SIM_CONCURRENCY || Math.max(1, availableParallelism() - 1)),
   workRoot: process.env.SIM_WORKDIR || tmpdir(),
   keepWork: process.env.SIM_KEEP_WORK === '1',
+  // warm worker pool: on unless SIM_POOL=0
+  pool: process.env.SIM_POOL !== '0',
 };
+
+let pool = null;
+function getPool() {
+  if (!config.pool) return null;
+  if (!pool) {
+    pool = new Pool({ scilab: config.scilab, size: config.concurrency });
+    pool.warm(1);
+    process.on('exit', () => pool?.close());
+  }
+  return pool;
+}
 
 // ---- tiny semaphore so a burst of requests can't fork-bomb the host
 let active = 0;
@@ -97,7 +111,12 @@ export async function simulate(net) {
     const { script, scopes } = generate(net, dir);
     const scriptPath = join(dir, 'model.sce');
     await writeFile(scriptPath, script);
-    const res = await runProcess(scriptPath, dir);
+    let res = null;
+    const p = getPool();
+    if (p) {
+      try { res = await p.run(scriptPath, config.timeoutMs); } catch { res = null; } // worker would not start
+    }
+    if (!res) res = await runProcess(scriptPath, dir);
     const log = cleanLog(res.out);
     if (res.spawnError) throw new SimulationError(`could not start Scilab (${config.scilab}): ${res.spawnError.message}`, log);
     if (res.timedOut) throw new SimulationError(`simulation timed out after ${config.timeoutMs / 1000} s`, log);
