@@ -1,0 +1,48 @@
+name: Deploy app
+
+# Deploys to the self-host VM over SSH once CI has passed on a push to scilab-sim.
+# The restricted deploy key can ONLY run `deploy lab` on the host (forced command
+# ~/bin/gha-deploy-dispatch.sh: no shell, no port/agent forwarding, no pty), which
+# runs ~/apps/fulgurlab/deploy.sh: git fetch + rebuild + restart + check.
+#
+# Required repo secrets (Settings > Secrets and variables > Actions):
+#   DEPLOY_SSH_KEY  - private half of the restricted deploy keypair on the host
+#   DEPLOY_HOST     - VM public IP
+#   DEPLOY_USER     - SSH user on the VM (ubuntu)
+on:
+  workflow_run:
+    workflows: [ "ci" ]
+    types: [ completed ]
+    branches: [ "scilab-sim" ]
+  workflow_dispatch:
+
+# One deploy at a time; a newer push waits rather than racing the running build.
+concurrency:
+  group: deploy-lab
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # From CI: only a successful run triggered by a push (never a pull request).
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check secrets are configured
+        id: guard
+        run: |
+          if [ -z "${{ secrets.DEPLOY_SSH_KEY }}" ]; then
+            echo "::notice::No DEPLOY_SSH_KEY secret — deploy not configured yet. Skipping."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy over SSH
+        if: steps.guard.outputs.configured == 'true'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          command_timeout: 30m
+          script: deploy lab
