@@ -1,5 +1,19 @@
 # fulgurlab classic UI — design handoff
 
+> **Superseded for visuals (2026-11-25).** The editor now uses the "refined classic" look shared by the
+> whole simulator suite (fulgurlab, fulgurspice, nikaVSimulator, stmVSimulator); the reference mockups
+> are `../*-refined-classic.html` next to this repo. What changed from this handoff:
+> a white menu bar with a Lucide brand mark; a chrome toolbar with a labelled green **Run** first and
+> Stop/Step fields on the right (the disabled Solver select is gone: the status bar names LSODAR);
+> no model tab strip; the path bar became a canvas header ("Model / … / **Model**") with a Fit button;
+> the canvas has a dot grid and a zoom pill (− % + fit) instead of the vertical tool strip; the Library
+> Browser is the "Block library"; the inspector is headed "Properties" with label-above-input fields;
+> the scope is a **light** plot (dark when the system is) using `--scope-*` tokens, with the legend
+> under the dock header. Dark mode is back: every colour is a token in `web/src/editor/styles.css`,
+> overridden under `prefers-color-scheme: dark`. Below 760 px the Properties panel is an overlay
+> (toolbar button); below 520 px the library is a drawer. Behaviour, shortcuts, undo, the netlist, the
+> API and the embed protocol are unchanged. The rest of this document still describes interaction.
+
 This folder is the handoff for restyling the fulgurlab editor (`web/src/editor/`) in a Simulink-style "classic desktop" language. It is a visual and interaction restyle. **The netlist, the API, the server and the embed protocol do not change.**
 
 ## What's in here

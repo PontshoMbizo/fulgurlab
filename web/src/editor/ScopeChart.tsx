@@ -1,5 +1,5 @@
-// The scope plot: black plot area on a #1A1A1A surround, mono ticks, 1.5 px traces.
-// The scope is the only dark surface in the editor and stays black in every theme.
+// The scope plot: the light plot of the suite's results dock (dark when the system is), mono ticks,
+// 1.6 px traces. Colours are the --scope-* tokens in styles.css.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Trace } from './types';
 import { num } from './model';

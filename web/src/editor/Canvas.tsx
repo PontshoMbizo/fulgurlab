@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Block, Link, Netlist, PortRef, Selection } from './types';
 import { BlockGlyph } from './BlockGlyph';
-import { IconFit, IconZoomIn, IconZoomOut } from './Icons';
+import { IconFit, IconMinus, IconPlus } from './Icons';
 import { blockSize, blocksInRect, inPortPos, outPortPos, ports, selectedIds, selectionOf, snap, wirePath } from './model';
 
 interface Props {
@@ -203,10 +203,11 @@ export function Canvas({ net, selection, errorBlocks, onChange, onSelect, onOpen
         onDropType(type, p.x - 40, p.y - 28);
       }}
     >
-      <div className="canvas-tools" role="toolbar" aria-label="Canvas tools" aria-orientation="vertical">
-        <button type="button" className="tb" onClick={() => zoomBy(1.2)} aria-label="Zoom in" title="Zoom in"><IconZoomIn /></button>
-        <button type="button" className="tb" onClick={() => zoomBy(1 / 1.2)} aria-label="Zoom out" title="Zoom out"><IconZoomOut /></button>
-        <button type="button" className="tb" onClick={fit} aria-label="Fit to view" title="Fit to view"><IconFit /></button>
+      <div className="canvas-tools" role="toolbar" aria-label="Canvas tools">
+        <button type="button" className="tb" onClick={() => zoomBy(1 / 1.2)} aria-label="Zoom out" title="Zoom out"><IconMinus size={13} /></button>
+        <span className="zoom-label" aria-hidden>{Math.round(view.k * 100)}%</span>
+        <button type="button" className="tb" onClick={() => zoomBy(1.2)} aria-label="Zoom in" title="Zoom in"><IconPlus size={13} /></button>
+        <button type="button" className="tb" onClick={fit} aria-label="Fit to view" title="Fit to view"><IconFit size={13} /></button>
       </div>
       <svg
         ref={svg}
@@ -225,7 +226,12 @@ export function Canvas({ net, selection, errorBlocks, onChange, onSelect, onOpen
           <marker id="arrow-sel" viewBox="0 0 8 8" refX="7.5" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto">
             <path d="M0,0 L8,4 L0,8 z" className="wire-head is-selected" />
           </marker>
+          {/* dot grid that pans and zooms with the diagram */}
+          <pattern id="canvas-grid" width={18} height={18} patternUnits="userSpaceOnUse" patternTransform={`translate(${view.x},${view.y}) scale(${view.k})`}>
+            <circle cx={1} cy={1} r={0.9} className="canvas-dot" />
+          </pattern>
         </defs>
+        <rect width="100%" height="100%" fill="url(#canvas-grid)" pointerEvents="none" />
         <g transform={`translate(${view.x},${view.y}) scale(${view.k})`}>
           {net.links.map((l, i) => {
             const s = byId.get(l.from.block), d = byId.get(l.to.block);

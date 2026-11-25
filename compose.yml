@@ -6,7 +6,7 @@ services:
     build: .
     image: fulgurlab:latest
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"   # loopback only: nginx (or run.sh) fronts it
     environment:
       SIM_TIMEOUT_MS: "20000"
       SIM_CONCURRENCY: "2"

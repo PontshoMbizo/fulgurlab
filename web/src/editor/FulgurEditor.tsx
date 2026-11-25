@@ -44,7 +44,10 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
   const center = useRef<(() => { x: number; y: number }) | null>(null);
   const canvasControls = useRef<CanvasControls | null>(null);
   const [zoom, setZoom] = useState(1);
-  const [showLibrary, setShowLibrary] = useState(true);
+  // On a phone-sized screen the library is a drawer, so it starts closed there.
+  const [showLibrary, setShowLibrary] = useState(() => typeof window === 'undefined' || !window.matchMedia('(max-width: 520px)').matches);
+  /** narrow screens only: the Properties panel as an overlay */
+  const [propsOpen, setPropsOpen] = useState(false);
   const [scopePopped, setScopePopped] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   /** the model as last loaded or saved, to mark unsaved changes with * */
@@ -300,26 +303,28 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
     : result && !result.ok ? result.error
     : stale ? 'The diagram changed since this run. Run again to update.'
     : 'Ready';
-  const tb = (label: string, icon: React.ReactNode, onClick: () => void, opts: { disabled?: boolean; pressed?: boolean } = {}) => (
-    <button type="button" className="tb" aria-label={label} title={label} onClick={onClick} disabled={opts.disabled} aria-pressed={opts.pressed}>{icon}</button>
+  const tb = (label: string, icon: React.ReactNode, onClick: () => void, opts: { disabled?: boolean; pressed?: boolean; optional?: boolean } = {}) => (
+    <button type="button" className={opts.optional ? 'tb tb-optional' : 'tb'} aria-label={label} title={label} onClick={onClick} disabled={opts.disabled} aria-pressed={opts.pressed}>{icon}</button>
   );
 
   return (
-    <div className={`fulgur ${compact ? 'is-compact' : ''}`}>
+    <div className={`fulgur ${compact ? 'is-compact' : ''} ${propsOpen ? 'props-open' : ''}`}>
       {!compact && (
         <div className="menubar">
           <div className="brand"><I.BrandMark />fulgurlab</div>
           <MenuBar menus={menus} />
-          <span className="model-name" title={net.name}>{net.name}{dirty ? ' *' : ''}</span>
         </div>
       )}
 
       <div className="toolbar" role="toolbar" aria-label="Model toolbar">
+        <button type="button" className="run-btn" aria-label="Run simulation (Ctrl+Enter)" title="Run (Ctrl+Enter)" onClick={run} disabled={!canRun}><I.IconRun size={13} />{running ? 'Running…' : 'Run'}</button>
+        {tb('Stop simulation', <I.IconStop />, stop, { disabled: !running })}
+        <span className="tb-sep" aria-hidden />
         {!compact && (
           <>
-            {tb('New model', <I.IconNew />, () => load(emptyNetlist()))}
-            {tb('Open model', <I.IconOpen />, chooseFile)}
-            {tb('Save model', <I.IconSave />, save)}
+            {tb('New model', <I.IconNew />, () => load(emptyNetlist()), { optional: true })}
+            {tb('Open model', <I.IconOpen />, chooseFile, { optional: true })}
+            {tb('Save model', <I.IconSave />, save, { optional: true })}
             <span className="tb-sep" aria-hidden />
             <input ref={fileInput} type="file" accept=".json,application/json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) open(f); e.target.value = ''; }} />
           </>
@@ -327,89 +332,84 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
         {tb('Undo', <I.IconUndo />, doUndo, { disabled: !undo.current.length })}
         {tb('Redo', <I.IconRedo />, doRedo, { disabled: !redo.current.length })}
         <span className="tb-sep" aria-hidden />
-        {tb('Library browser', <I.IconLibrary />, () => setShowLibrary((v) => !v), { pressed: showLibrary })}
-        {tb('Model settings', <I.IconSettings />, () => setSelection(null))}
+        {tb('Library browser', <I.IconPanelLeft />, () => setShowLibrary((v) => !v), { pressed: showLibrary })}
+        {tb('Model settings', <I.IconSettings />, () => setSelection(null), { optional: true })}
         <span className="tb-sep" aria-hidden />
-        <button type="button" className="run-btn" aria-label="Run simulation (Ctrl+Enter)" title="Run (Ctrl+Enter)" onClick={run} disabled={!canRun}><I.IconRun /></button>
-        {tb('Stop simulation', <I.IconStop />, stop, { disabled: !running })}
-        <span className="tb-sep" aria-hidden />
-        <NumberField
-          label="Stop time" unit="s" aria="Stop time in seconds" width={64}
-          value={net.settings.tf}
-          valid={(v) => v > 0 && v <= LIMITS.maxTf}
-          onCommit={(v) => update({ ...net, settings: { ...net.settings, tf: v } })}
-        />
-        <NumberField
-          label="Step" aria="Scope sample step in seconds" width={52}
-          value={net.settings.dt}
-          valid={(v) => v >= LIMITS.minDt}
-          onCommit={(v) => update({ ...net, settings: { ...net.settings, dt: v } })}
-        />
-        <label className="tb-field">
-          <span>Solver</span>
-          <select aria-label="Solver" disabled value="lsodar" onChange={() => undefined}>
-            <option value="lsodar">LSODAR (auto)</option>
-          </select>
-        </label>
-        <span className="tb-sep" aria-hidden />
-        {tb(scopePopped ? 'Dock scope' : 'Open scope', <I.IconScope />, () => setScopePopped((v) => !v), { pressed: scopePopped })}
-        {tb('Export CSV', <I.IconDownload />, exportCsv, { disabled: !hasScopes })}
+        {tb(scopePopped ? 'Dock scope' : 'Open scope', <I.IconScope />, () => setScopePopped((v) => !v), { pressed: scopePopped, optional: true })}
+        {tb('Export CSV', <I.IconDownload />, exportCsv, { disabled: !hasScopes, optional: true })}
+        <div className="run-settings">
+          <NumberField
+            label="Stop" unit="s" aria="Stop time in seconds" width={64}
+            value={net.settings.tf}
+            valid={(v) => v > 0 && v <= LIMITS.maxTf}
+            onCommit={(v) => update({ ...net, settings: { ...net.settings, tf: v } })}
+          />
+          <NumberField
+            label="Step" aria="Scope sample step in seconds" width={60} className="step-field"
+            value={net.settings.dt}
+            valid={(v) => v >= LIMITS.minDt}
+            onCommit={(v) => update({ ...net, settings: { ...net.settings, dt: v } })}
+          />
+        </div>
+        <button type="button" className="tb props-toggle" aria-label="Toggle properties" title="Properties" aria-pressed={propsOpen} onClick={() => setPropsOpen((v) => !v)}>
+          <I.IconPanelRight /><span className="control-word">Properties</span>
+        </button>
       </div>
 
-      {(!compact || path.length > 0) && (
-        <>
-          {!compact && <div className="tabstrip" role="tablist" aria-label="Open models">
-            <div className="tab is-active" role="tab" aria-selected="true" tabIndex={0}>{net.name}{dirty ? ' *' : ''}</div>
-          </div>}
-          <div className="pathbar">
-            <button type="button" className="tb tb-small" aria-label={showLibrary ? 'Hide library' : 'Show library'} title={showLibrary ? 'Hide library' : 'Show library'} onClick={() => setShowLibrary((v) => !v)}>
-              <span className={showLibrary ? '' : 'flip'}><I.IconChevronLeft /></span>
-            </button>
-            <nav className="path" aria-label="Diagram path">
-              <I.BrandMark size={14} />
-              {[net.name ?? 'Model', ...pathNames].map((name, i, all) => (
-                <span key={i} className="crumb">
-                  {i > 0 && <span className="crumb-sep" aria-hidden>›</span>}
-                  {i < all.length - 1
-                    ? <button type="button" className="crumb-link" onClick={() => goTo(i)} title={`Go to ${name}`}>{name}</button>
-                    : <span aria-current="location">{name}</span>}
-                </span>
-              ))}
-            </nav>
-          </div>
-        </>
-      )}
-
       <div className={`workspace ${showLibrary ? '' : 'no-library'}`}>
-        {showLibrary && <Palette onAdd={(t) => addBlock(t)} insideSubsystem={path.length > 0} />}
-        <Canvas
-          net={view}
-          selection={selection}
-          errorBlocks={errorBlocks}
-          onChange={updateView}
-          onOpen={openBlock}
-          onSelect={setSelection}
-          onDropType={(t, x, y) => addBlock(t, x, y)}
-          loadKey={viewKey}
-          centerRef={center}
-          controlsRef={canvasControls}
-          onZoom={setZoom}
-        />
+        {showLibrary && <Palette onAdd={(t) => { addBlock(t); if (window.matchMedia('(max-width: 520px)').matches) setShowLibrary(false); }} insideSubsystem={path.length > 0} />}
+        <div className="center">
+          {(!compact || path.length > 0) && (
+            <div className="canvas-header">
+              <nav className="path" aria-label="Diagram path">
+                <I.BrandMark size={13} />
+                {[net.name || 'Model', ...pathNames].map((name, i, all) => (
+                  <span key={i} className="crumb">
+                    {i > 0 && <span className="crumb-sep" aria-hidden>/</span>}
+                    {i < all.length - 1
+                      ? <button type="button" className="crumb-link" onClick={() => goTo(i)} title={`Go to ${name}`}>{name}</button>
+                      : <span aria-current="location" className="model-name" title={name}>{name}{dirty && i === 0 ? ' *' : ''}</span>}
+                  </span>
+                ))}
+                {path.length === 0 && <><span className="crumb-sep" aria-hidden>/</span><span className="crumb-mode">Model</span></>}
+              </nav>
+              <button type="button" className="icon-btn" aria-label="Fit to view" title="Fit to view" onClick={() => canvasControls.current?.fit()}><I.IconFit /></button>
+            </div>
+          )}
+          <Canvas
+            net={view}
+            selection={selection}
+            errorBlocks={errorBlocks}
+            onChange={updateView}
+            onOpen={openBlock}
+            onSelect={setSelection}
+            onDropType={(t, x, y) => addBlock(t, x, y)}
+            loadKey={viewKey}
+            centerRef={center}
+            controlsRef={canvasControls}
+            onZoom={setZoom}
+          />
+        </div>
         <Inspector net={view} selection={selection} issues={issues} onGroup={groupable.length ? group : undefined} onBlockChange={changeBlock} onSettings={(p) => update({ ...net, ...p })} onDelete={deleteSelection} onClose={() => setSelection(null)} />
       </div>
 
       {(!result || !result.ok || Object.keys(result.scopes).length === 0) && (
-        <section className="results" aria-live="polite">
-          {!result && !running && <p className="muted">Press Run (Ctrl+Enter) to simulate. Results from each Scope appear here.</p>}
-          {running && !result && <p className="muted">Simulating with Scilab…</p>}
-          {result && !result.ok && (
-            <div className="sim-error" role="alert">
-              <strong>{result.error}</strong>
-              {result.issues && result.issues.length > 0 && <ul>{result.issues.map((i, k) => <li key={k}>{i.message}</li>)}</ul>}
-              {result.log && <details><summary>Scilab output</summary><pre>{result.log}</pre></details>}
-            </div>
-          )}
-          {result?.ok && <p className="muted">The diagram ran, but it has no Scope block to plot.</p>}
+        <section className="results" aria-live="polite" aria-label="Results">
+          <div className="dock-header">
+            <span className="dock-title">{result && !result.ok ? <><I.IconCircleAlert size={14} />Problems</> : <><I.IconScope size={14} />Scope</>}</span>
+          </div>
+          <div className="results-body">
+            {!result && !running && <p className="results-empty">Press Run (Ctrl+Enter) to simulate. Results from each Scope appear here.</p>}
+            {running && !result && <p className="results-empty">Simulating with Scilab…</p>}
+            {result && !result.ok && (
+              <div className="sim-error" role="alert">
+                <strong>{result.error}</strong>
+                {result.issues && result.issues.length > 0 && <ul>{result.issues.map((i, k) => <li key={k}>{i.message}</li>)}</ul>}
+                {result.log && <details><summary>Scilab output</summary><pre>{result.log}</pre></details>}
+              </div>
+            )}
+            {result?.ok && <p className="results-empty">The diagram ran, but it has no Scope block to plot.</p>}
+          </div>
         </section>
       )}
       {result?.ok && Object.keys(result.scopes).length > 0 && (
@@ -422,7 +422,10 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
       )}
 
       <footer className="statusbar" role="status">
-        <span className={`status-main ${result && !result.ok ? 'is-error' : ''}`}>{status}</span>
+        <span className={`status-main ${result && !result.ok ? 'is-error' : ''}`}>
+          {result && !result.ok ? <I.IconCircleAlert size={13} /> : running ? <I.IconScope size={13} /> : <I.IconCircleCheck size={13} />}
+          <span>{status}</span>
+        </span>
         {result?.ok && <span className="status-cell">Simulated in {(result.elapsedMs / 1000).toFixed(2)} s</span>}
         <span className="status-cell">{Math.round(zoom * 100)}%</span>
         <span className="status-cell mono">T={net.settings.tf.toFixed(3)}</span>
@@ -435,9 +438,9 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
 }
 
 /** Mono, right-aligned number input that commits a valid draft on blur or Enter. */
-function NumberField({ label, unit, aria, width, value, valid, onCommit }: {
+function NumberField({ label, unit, aria, width, value, valid, onCommit, className }: {
   label: string; unit?: string; aria: string; width: number; value: number;
-  valid: (v: number) => boolean; onCommit: (v: number) => void;
+  valid: (v: number) => boolean; onCommit: (v: number) => void; className?: string;
 }) {
   const [draft, setDraft] = useState(String(value));
   useEffect(() => setDraft(String(value)), [value]);
@@ -445,7 +448,7 @@ function NumberField({ label, unit, aria, width, value, valid, onCommit }: {
   const ok = draft.trim() !== '' && Number.isFinite(v) && valid(v);
   const commit = () => { if (ok && v !== value) onCommit(v); else if (!ok) setDraft(String(value)); };
   return (
-    <label className="tb-field">
+    <label className={className ? `tb-field ${className}` : 'tb-field'}>
       <span>{label}</span>
       <input
         className="num"
@@ -490,7 +493,7 @@ function ShortcutsDialog({ onClose }: { onClose: () => void }) {
         onPointerDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}
       >
-        <div className="dialog-title">Keyboard shortcuts</div>
+        <div className="dialog-title"><I.BrandMark size={14} />Keyboard shortcuts</div>
         <dl className="shortcuts">
           {SHORTCUTS.map(([k, d]) => (<div key={k}><dt>{k}</dt><dd>{d}</dd></div>))}
         </dl>

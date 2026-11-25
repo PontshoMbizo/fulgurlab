@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { BLOCKS, CATEGORIES, defaultParams } from '../../../shared/catalog.js';
 import { BlockGlyph } from './BlockGlyph';
 import { blockSize, defaultSystem, ports } from './model';
+import { IconLibrary } from './Icons';
 
 /** Library Browser: a collapsible tree of blocks. Drag onto the canvas, or click/Enter to add one. */
 export function Palette({ onAdd, insideSubsystem = false }: { onAdd: (type: string) => void; insideSubsystem?: boolean }) {
@@ -12,9 +13,9 @@ export function Palette({ onAdd, insideSubsystem = false }: { onAdd: (type: stri
   const toggle = (cat: string) => setCollapsed((c) => { const n = new Set(c); if (n.has(cat)) n.delete(cat); else n.add(cat); return n; });
   return (
     <nav className="palette" aria-label="Library browser">
-      <div className="panel-title">Library Browser</div>
+      <div className="panel-title"><IconLibrary /> Block library</div>
       <div className="palette-searchbar">
-        <input className="palette-search" placeholder="Find a block" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Find a block" />
+        <input className="palette-search" placeholder="Search blocks…" type="search" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Find a block" />
       </div>
       <div className="palette-tree">
         {CATEGORIES.map((cat) => {
@@ -66,7 +67,7 @@ function LibraryIcon({ type }: { type: string }) {
     return <path key={`${dir}${i}`} d={`M${x},${y0 - 4} L${x + 5 * dir},${y0} L${x},${y0 + 4}`} className="icon-chevron" />;
   };
   return (
-    <svg width={44} height={33} viewBox="0 0 64 48" aria-hidden className="palette-glyph">
+    <svg width={30} height={22} viewBox="0 0 64 48" aria-hidden className="palette-glyph">
       <g transform={`translate(${left},${24 - (h * s) / 2}) scale(${s})`}>
         <BlockGlyph block={block} />
       </g>

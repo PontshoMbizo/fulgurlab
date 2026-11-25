@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import type { Trace } from './types';
 import { ScopePlot, downloadCsv, readoutText, traceColor } from './ScopeChart';
 import { MenuBar } from './Menus';
-import { IconDownload, IconScope, IconZoomIn } from './Icons';
+import { IconAutoscale, IconCursor, IconDock, IconDownload, IconPop, IconScope, IconX, IconZoomIn } from './Icons';
 
 export interface ScopeData { id: string; title: string; names: string[]; trace: Trace }
 
@@ -12,19 +12,6 @@ interface Props {
   popped: boolean;
   onTogglePop: () => void;
 }
-
-const IconAutoscale = () => (
-  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} aria-hidden focusable="false"><path d="M4 9V4h5M20 15v5h-5M4 4l7 7M20 20l-7-7" /></svg>
-);
-const IconCursor = () => (
-  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} aria-hidden focusable="false"><path d="M8 3v18M16 3v18" /><path d="M3 12h18" strokeDasharray="2 2" /></svg>
-);
-const IconPop = () => (
-  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} aria-hidden focusable="false"><path d="M13 4h7v7M20 4l-9 9" /><path d="M18 14v6H4V6h6" /></svg>
-);
-const IconDock = () => (
-  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} aria-hidden focusable="false"><rect x={3} y={4} width={18} height={16} /><path d="M3 14h18" /></svg>
-);
 
 /** Scopes below the workspace (docked) or in a movable in-app window (popped out). */
 export function ScopePanel({ scopes, tf, popped, onTogglePop }: Props) {
@@ -48,7 +35,7 @@ export function ScopePanel({ scopes, tf, popped, onTogglePop }: Props) {
       {btn('Zoom (drag a time range on the plot)', <IconZoomIn />, () => setZoomMode((z) => !z), zoomMode)}
       {btn('Autoscale', <IconAutoscale />, autoscale)}
       {btn('Cursor measurements', <IconCursor />, () => setCursor((c) => !c), cursor)}
-      {btn('Export CSV', <IconDownload size={16} />, exportCsv)}
+      {btn('Export CSV', <IconDownload />, exportCsv)}
       {popped ? btn('Dock into editor', <IconDock />, onTogglePop) : btn('Pop out scope window', <IconPop />, onTogglePop)}
     </>
   );
@@ -70,20 +57,22 @@ export function ScopePanel({ scopes, tf, popped, onTogglePop }: Props) {
           onClick={() => { setActive(s.id); setXRange(null); setHover(null); }}>{s.title}</button>
       ))}
     </div>
-  ) : <span className="scope-title">Scope</span>;
+  ) : <span className="scope-title"><IconScope size={14} />Scope</span>;
 
   if (popped) return <ScopeWindow title={cur.title} tf={tf} tabs={tabs} buttons={buttons} legend={legend} readout={readout} plot={plot()} onDock={onTogglePop} onExport={exportCsv} onAutoscale={autoscale} onCursor={() => setCursor((c) => !c)} cursor={cursor} />;
 
   return (
     <section className="scope-dock" aria-label="Scope output">
       <div className="scope-titlerow">
-        <IconScope size={16} />
         {tabs}
+        <span className="scope-spacer" />
         {buttons}
+      </div>
+      <div className="scope-legend-row">
         {legend}
         <span className="scope-readout-line mono" aria-live="off">{readout}</span>
       </div>
-      {plot(190)}
+      {plot(160)}
     </section>
   );
 }
@@ -114,9 +103,9 @@ function ScopeWindow({ title, tf, tabs, buttons, legend, readout, plot, onDock, 
         onPointerMove={(e) => { if (drag.current) setPos(clamp(e.clientX - drag.current.dx, e.clientY - drag.current.dy)); }}
         onPointerUp={() => { drag.current = null; }}
       >
-        <IconScope size={16} />
+        <IconScope size={15} />
         <span className="window-name">Scope — {title}</span>
-        <button type="button" className="window-close" aria-label="Close scope window (dock it)" onClick={onDock}>✕</button>
+        <button type="button" className="window-close" aria-label="Close scope window (dock it)" onClick={onDock}><IconX /></button>
       </div>
       <div className="menubar window-menu">
         <MenuBar menus={[
@@ -132,8 +121,8 @@ function ScopeWindow({ title, tf, tabs, buttons, legend, readout, plot, onDock, 
         {tabs}
         <span className="tb-sep" aria-hidden />
         {buttons}
-        {legend}
       </div>
+      <div className="scope-legend-row">{legend}</div>
       <div className="window-plot">{plot}</div>
       <div className="statusbar">
         <span className="status-main">Sample based · T={tf.toFixed(3)}</span>

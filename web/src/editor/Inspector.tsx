@@ -2,6 +2,10 @@ import { useState } from 'react';
 import { BLOCK_MAP, LIMITS, type Param } from '../../../shared/catalog.js';
 import type { Block, Issue, Netlist, Selection } from './types';
 import { formatMatrix, formatVector, parseMatrix, parseVector, ports } from './model';
+import { IconSlidersHorizontal } from './Icons';
+
+/** Panel header shared by every inspector state; the selection's own title goes under it. */
+const Header = () => <div className="panel-title"><IconSlidersHorizontal /> Properties</div>;
 
 interface Props {
   net: Netlist;
@@ -65,7 +69,7 @@ function show(p: Param, v: unknown) {
 
 
 /**
- * Block Parameters dialog: grey panel, etched fieldsets, OK / Cancel / Help / Apply.
+ * Parameters panel: a heading, sections of label-above-input fields, OK / Cancel / Help / Apply.
  * Fields keep drafts; Apply commits every valid one as a single undo step.
  */
 function ParamsPanel({ title, ariaLabel, legend, description, fields, ports, issues, onApply, onOk, onDelete, deleteLabel, help }: {
@@ -98,8 +102,9 @@ function ParamsPanel({ title, ariaLabel, legend, description, fields, ports, iss
         else if (e.key === 'Escape' && pending) { e.stopPropagation(); cancel(); }
       }}
     >
-      <div className="panel-title">{title}</div>
+      <Header />
       <div className="inspector-body">
+        <p className="inspector-heading">{title}</p>
         <fieldset className="etched">
           <legend>{legend}</legend>
           {description && <p className="muted">{description}</p>}
@@ -160,8 +165,9 @@ export function Inspector({ net, selection, issues, onBlockChange, onSettings, o
   if (selection?.kind === 'blocks') {
     return (
       <aside className="inspector" aria-label="Selection">
-        <div className="panel-title">{selection.ids.length} blocks selected</div>
+        <Header />
         <div className="inspector-body">
+          <p className="inspector-heading">{selection.ids.length} blocks selected</p>
           <fieldset className="etched">
             <legend>Selection</legend>
             <p className="muted">Drag to move them together. Select a single block to edit its parameters.</p>
@@ -186,7 +192,7 @@ export function Inspector({ net, selection, issues, onBlockChange, onSettings, o
     return (
       <ParamsPanel
         key={`${b.id}|${b.name}|${JSON.stringify(b.params)}`}
-        title={`Block Parameters: ${b.name || def.label}`}
+        title={b.name && b.name !== def.label ? `${def.label} · ${b.name}` : def.label}
         ariaLabel="Block properties"
         legend={def.label}
         description={def.description}
@@ -211,8 +217,9 @@ export function Inspector({ net, selection, issues, onBlockChange, onSettings, o
     const name = (id: string) => net.blocks.find((b) => b.id === id)?.name ?? id;
     return (
       <aside className="inspector" aria-label="Wire properties">
-        <div className="panel-title">Wire</div>
+        <Header />
         <div className="inspector-body">
+          <p className="inspector-heading">Wire</p>
           <fieldset className="etched">
             <legend>Connection</legend>
             <p className="muted">From {name(l.from.block)}, output {l.from.port + 1}, to {name(l.to.block)}, input {l.to.port + 1}.</p>
@@ -239,7 +246,7 @@ export function Inspector({ net, selection, issues, onBlockChange, onSettings, o
   return (
     <ParamsPanel
       key={`model|${net.name}|${net.settings.tf}|${net.settings.dt}`}
-      title="Model Configuration"
+      title="Model configuration"
       ariaLabel="Model settings"
       legend="Model"
       description={net.description ?? 'Select a block to edit it. Ctrl+Enter runs the simulation.'}
