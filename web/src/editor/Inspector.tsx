@@ -18,11 +18,21 @@ interface Props {
   onGroup?: () => void;
   /** OK: apply, then drop the selection */
   onClose: () => void;
+  /** Locked blocks are read-only and can't be deleted (a learner on a problem). */
+  enforceLocks?: boolean;
+  /** Show the Lock checkbox (a problem author). */
+  canLock?: boolean;
+  /** Stop time and sample step are fixed by the host. */
+  lockSettings?: boolean;
+}
+
+function anyLocked(b: Block): boolean {
+  return !!b.locked || !!b.system?.blocks.some(anyLocked);
 }
 
 type Parsed = { ok: true; v: unknown } | { ok: false; msg: string };
 interface FieldDef {
-  key: string; label: string; value: string; hint?: string; text?: boolean;
+  key: string; label: string; value: string; hint?: string; text?: boolean; readOnly?: boolean;
   parse: (s: string) => Parsed;
 }
 
@@ -72,11 +82,13 @@ function show(p: Param, v: unknown) {
  * Parameters panel: a heading, sections of label-above-input fields, OK / Cancel / Help / Apply.
  * Fields keep drafts; Apply commits every valid one as a single undo step.
  */
-function ParamsPanel({ title, ariaLabel, legend, description, fields, ports, issues, onApply, onOk, onDelete, deleteLabel, help }: {
+function ParamsPanel({ title, ariaLabel, legend, description, fields, ports, issues, onApply, onOk, onDelete, deleteLabel, help, extra }: {
   title: string; ariaLabel: string; legend: string; description?: string;
   fields: FieldDef[]; ports?: string; issues: Issue[];
   onApply: (values: Record<string, unknown>) => void; onOk: () => void;
   onDelete?: () => void; deleteLabel?: string; help?: boolean;
+  /** extra content under the parameters (the Lock toggle) */
+  extra?: React.ReactNode;
 }) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const shown = (f: FieldDef) => drafts[f.key] ?? f.value;
@@ -121,6 +133,8 @@ function ParamsPanel({ title, ariaLabel, legend, description, fields, ports, iss
                   className={f.text ? 'is-text' : 'num'}
                   value={shown(f)}
                   aria-invalid={!r.ok}
+                  disabled={f.readOnly}
+                  title={f.readOnly ? 'Set by the problem' : undefined}
                   aria-describedby={!r.ok || f.hint ? `${id}-note` : undefined}
                   onChange={(e) => setDrafts((d) => ({ ...d, [f.key]: e.target.value }))}
                 />
@@ -129,6 +143,7 @@ function ParamsPanel({ title, ariaLabel, legend, description, fields, ports, iss
             );
           })}
         </fieldset>
+        {extra}
         {ports && (
           <fieldset className="etched">
             <legend>Ports</legend>
@@ -161,7 +176,7 @@ function portSummary(net: Netlist, b: Block, inputs: number, outputs: number) {
   return `${ins}, ${outs}.`;
 }
 
-export function Inspector({ net, selection, issues, onBlockChange, onSettings, onDelete, onGroup, onClose }: Props) {
+export function Inspector({ net, selection, issues, onBlockChange, onSettings, onDelete, onGroup, onClose, enforceLocks = false, canLock = false, lockSettings = false }: Props) {
   if (selection?.kind === 'blocks') {
     return (
       <aside className="inspector" aria-label="Selection">
@@ -175,7 +190,9 @@ export function Inspector({ net, selection, issues, onBlockChange, onSettings, o
         </div>
         <div className="dialog-buttons inspector-buttons">
           {onGroup && <button type="button" className="btn" onClick={onGroup}>Group</button>}
-          <button type="button" className="btn btn-delete" onClick={onDelete}>Delete</button>
+          {!(enforceLocks && selection.ids.every((id) => { const b = net.blocks.find((x) => x.id === id); return !!b && anyLocked(b); })) && (
+            <button type="button" className="btn btn-delete" onClick={onDelete}>Delete</button>
+          )}
         </div>
       </aside>
     );
@@ -185,17 +202,27 @@ export function Inspector({ net, selection, issues, onBlockChange, onSettings, o
     if (!b) return null;
     const def = BLOCK_MAP[b.type];
     const { inputs, outputs } = ports(b);
+    const frozen = enforceLocks && anyLocked(b);
     const fields: FieldDef[] = [
       { key: 'name', label: 'Name', value: b.name ?? '', text: true, parse: (s) => ({ ok: true, v: s }) },
-      ...def.params.map((p): FieldDef => ({ key: `p:${p.key}`, label: p.label, hint: p.hint, value: show(p, b.params[p.key]), text: p.kind === 'expr' || p.kind === 'matrix', parse: paramParser(p) })),
+      ...def.params.map((p): FieldDef => ({ key: `p:${p.key}`, label: p.label, hint: p.hint, value: show(p, b.params[p.key]), text: p.kind === 'expr' || p.kind === 'matrix', parse: paramParser(p), readOnly: frozen })),
     ];
     return (
       <ParamsPanel
-        key={`${b.id}|${b.name}|${JSON.stringify(b.params)}`}
+        key={`${b.id}|${b.name}|${JSON.stringify(b.params)}|${b.locked ? 1 : 0}`}
         title={b.name && b.name !== def.label ? `${def.label} · ${b.name}` : def.label}
         ariaLabel="Block properties"
         legend={def.label}
-        description={def.description}
+        description={frozen ? `${def.description ?? ''} Locked by the problem: you can move and wire it, but not change or delete it.`.trim() : def.description}
+        extra={canLock && !enforceLocks ? (
+          <fieldset className="etched">
+            <legend>Problem</legend>
+            <label className="lock-row">
+              <input type="checkbox" checked={!!b.locked} onChange={(e) => onBlockChange(b.id, { locked: e.target.checked || undefined })} />
+              Locked: learners can't change or delete this block
+            </label>
+          </fieldset>
+        ) : undefined}
         fields={fields}
         ports={portSummary(net, b, inputs, outputs)}
         issues={issues.filter((i) => i.block === b.id)}
@@ -205,7 +232,7 @@ export function Inspector({ net, selection, issues, onBlockChange, onSettings, o
           onBlockChange(b.id, { ...('name' in v ? { name: String(v.name) } : {}), params });
         }}
         onOk={onClose}
-        onDelete={onDelete}
+        onDelete={frozen ? undefined : onDelete}
         deleteLabel="Delete"
         help
       />
@@ -235,11 +262,11 @@ export function Inspector({ net, selection, issues, onBlockChange, onSettings, o
   const fields: FieldDef[] = [
     { key: 'name', label: 'Name', value: net.name ?? '', text: true, parse: (s) => ({ ok: true, v: s }) },
     {
-      key: 'tf', label: 'Stop time (s)', value: String(net.settings.tf),
+      key: 'tf', label: 'Stop time (s)', value: String(net.settings.tf), readOnly: lockSettings,
       parse: (s) => { const r = numParse(s); return r.ok && (r.v as number) > 0 && (r.v as number) <= LIMITS.maxTf ? r : { ok: false, msg: `Between 0 and ${LIMITS.maxTf}` }; },
     },
     {
-      key: 'dt', label: 'Sample step (s)', value: String(net.settings.dt), hint: 'How often scopes record. The solver picks its own internal steps.',
+      key: 'dt', label: 'Sample step (s)', value: String(net.settings.dt), readOnly: lockSettings, hint: 'How often scopes record. The solver picks its own internal steps.',
       parse: (s) => { const r = numParse(s); return r.ok && (r.v as number) >= LIMITS.minDt ? r : { ok: false, msg: `At least ${LIMITS.minDt}` }; },
     },
   ];

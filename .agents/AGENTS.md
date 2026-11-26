@@ -29,9 +29,14 @@ circuit-simulator fork; that code lives only in git history now, e.g. branch
 - To debug a run: `SIM_KEEP_WORK=1`, then read `$TMPDIR/fulgur-*/model.sce`.
 
 ## scope.io integration
-scope.io embeds the editor in an iframe (`/?embed=1`, postMessage API) or uses
-`POST /api/simulate` directly; see `docs/embedding.md`. The old CircuitJS iframe
-integration (`components/Simulator.jsx` in scope.io) targets the previous engine
-and must be migrated before this branch replaces what scope.io loads.
+scope.io embeds the editor in an iframe and drives it with its shared `scopeio:*`
+protocol (`web/src/scopeio.ts`: ready / init / change / result, modes export /
+capture / solve). It grades by re-simulating the submitted diagram through
+`POST /api/simulate` with the `FULGUR_GRADER_TOKEN` bearer token, after checking
+every `locked` block of the starter is unchanged. See `docs/embedding.md`.
+- `locked` and the settings lock are editor conveniences; the grader is the check.
+  Keep `id`, `type` and `params` of locked blocks stable across editor changes.
+- scope.io's CircuitJS problems are unrelated to this repo now (CircuitJS was
+  removed in Nov 2026).
 
 If you learn something that would have saved you time, add it here.
