@@ -23,11 +23,28 @@ export interface FulgurEditorProps {
   onResult?: (result: SimResult, net: Netlist) => void;
   /** Hide file/example controls, e.g. when embedded in a problem page. */
   compact?: boolean;
+  /** A host-defined primary button beside Run (scope.io: "Submit", "Capture golden", "Save starter").
+   * With `run`, pressing it simulates first and passes the result; without, the result is null. */
+  action?: { label: string; run: boolean };
+  onAction?: (net: Netlist, result: SimResult | null) => void;
+  /** Locked blocks can't be deleted or re-parameterised (a learner solving a problem). */
+  enforceLocks?: boolean;
+  /** Show the Lock toggle in the Inspector (a problem author). */
+  canLock?: boolean;
+  /** Stop time and sample step are fixed by the host. */
+  lockSettings?: boolean;
+  /** 'light' ignores the system dark setting, for hosts with a light UI. */
+  theme?: 'auto' | 'light';
+}
+
+/** A block that is locked, or a subsystem with a locked block anywhere inside it. */
+export function hasLocked(b: Block): boolean {
+  return !!b.locked || !!b.system?.blocks.some(hasLocked);
 }
 
 const HISTORY = 100;
 
-export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = [], onChange, onResult, compact = false }: FulgurEditorProps) {
+export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = [], onChange, onResult, compact = false, action, onAction, enforceLocks = false, canLock = false, lockSettings = false, theme = 'auto' }: FulgurEditorProps) {
   const [net, setNet] = useState<Netlist>(() => initial ?? emptyNetlist());
   const [selection, setSelection] = useState<Selection>(null);
   /** ids of the subsystems we have opened, from the top; empty = the top diagram */
@@ -125,12 +142,18 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
   };
 
   const changeBlock = (id: string, patch: Partial<Block>) => {
+    const target = view.blocks.find((b) => b.id === id);
+    // a learner may rename a locked block, nothing else
+    if (enforceLocks && target && hasLocked(target)) patch = 'name' in patch ? { name: patch.name } : {};
     const blocks = view.blocks.map((b) => (b.id === id ? { ...b, ...patch } : b));
     updateView({ ...view, blocks, links: pruneLinks(blocks, view.links) });
   };
 
   const deleteSelection = () => {
-    const ids = new Set(selectedIds(selection));
+    const ids = new Set(selectedIds(selection).filter((id) => {
+      const b = view.blocks.find((x) => x.id === id);
+      return !(enforceLocks && b && hasLocked(b));
+    }));
     if (ids.size) {
       updateView({ ...view, blocks: view.blocks.filter((b) => !ids.has(b.id)), links: view.links.filter((l) => !ids.has(l.from.block) && !ids.has(l.to.block)) });
     } else if (selection?.kind === 'link') {
@@ -148,7 +171,11 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
   };
 
   /** Wrap the selected blocks in a new subsystem; wires that crossed its edge go through Inports and Outports. */
-  const groupable = selectedIds(selection).filter((id) => !['inport', 'outport'].includes(view.blocks.find((b) => b.id === id)?.type ?? 'inport'));
+  const groupable = selectedIds(selection).filter((id) => {
+    const b = view.blocks.find((x) => x.id === id);
+    // grouping moves a block into a subsystem and changes its id path, which a problem checks
+    return !!b && !['inport', 'outport'].includes(b.type) && !(enforceLocks && hasLocked(b));
+  });
   const group = () => {
     if (!groupable.length) return;
     const g = groupIntoSubsystem(view, new Set(groupable));
@@ -157,7 +184,7 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
   };
 
   const wireKey = JSON.stringify(toWire(net));
-  const run = async () => {
+  const run = async (): Promise<SimResult | null> => {
     abort.current?.abort();
     const ctl = new AbortController();
     abort.current = ctl;
@@ -166,11 +193,23 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
       const r = await runSimulation(net, apiBase, ctl.signal);
       setResult(r); setResultFor(wireKey);
       onResult?.(r, net);
+      return r;
     } catch (e) {
-      if ((e as Error).name !== 'AbortError') setResult({ ok: false, error: String(e) });
+      if ((e as Error).name === 'AbortError') return null;
+      const r: SimResult = { ok: false, error: String(e) };
+      setResult(r);
+      return r;
     } finally {
       if (abort.current === ctl) setRunning(false);
     }
+  };
+
+  /** The host's button: simulate first if it asks for a result, then hand over the diagram. */
+  const doAction = async () => {
+    if (!action || !onAction) return;
+    if (!action.run) { onAction(net, null); return; }
+    const r = await run();
+    if (r) onAction(net, r);
   };
 
   const stop = () => { abort.current?.abort(); abort.current = null; setRunning(false); };
@@ -186,7 +225,7 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
       const t = e.target as HTMLElement;
       const typing = t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable;
       const mod = e.ctrlKey || e.metaKey;
-      if (mod && e.key === 'Enter') { e.preventDefault(); runRef.current(); return; }
+      if (mod && e.key === 'Enter') { e.preventDefault(); void runRef.current(); return; }
       if (typing) return;
       if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); keysRef.current.deleteSelection(); }
       else if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); keysRef.current.doUndo(); }
@@ -291,7 +330,7 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
       { label: scopePopped ? 'Dock Scope' : 'Pop out Scope', onSelect: () => setScopePopped((v) => !v) },
     ] },
     { label: 'Simulation', mnemonic: 0, items: [
-      { label: 'Run', shortcut: 'Ctrl+Enter', disabled: !canRun, onSelect: run },
+      { label: 'Run', shortcut: 'Ctrl+Enter', disabled: !canRun, onSelect: () => void run() },
       { label: 'Stop', disabled: !running, onSelect: stop },
       { label: 'Model settings…', onSelect: () => setSelection(null) },
     ] },
@@ -308,7 +347,7 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
   );
 
   return (
-    <div className={`fulgur ${compact ? 'is-compact' : ''} ${propsOpen ? 'props-open' : ''}`}>
+    <div className={`fulgur ${compact ? 'is-compact' : ''} ${propsOpen ? 'props-open' : ''} ${theme === 'light' ? 'theme-light' : ''}`}>
       {!compact && (
         <div className="menubar">
           <div className="brand"><I.BrandMark />fulgurlab</div>
@@ -317,7 +356,12 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
       )}
 
       <div className="toolbar" role="toolbar" aria-label="Model toolbar">
-        <button type="button" className="run-btn" aria-label="Run simulation (Ctrl+Enter)" title="Run (Ctrl+Enter)" onClick={run} disabled={!canRun}><I.IconRun size={13} />{running ? 'Running…' : 'Run'}</button>
+        <button type="button" className="run-btn" aria-label="Run simulation (Ctrl+Enter)" title="Run (Ctrl+Enter)" onClick={() => void run()} disabled={!canRun}><I.IconRun size={13} />{running ? 'Running…' : 'Run'}</button>
+        {action && onAction && (
+          <button type="button" className="run-btn action-btn" title={action.label} onClick={() => void doAction()} disabled={running || (action.run && !canRun)}>
+            <I.IconCircleCheck size={13} />{action.label}
+          </button>
+        )}
         {tb('Stop simulation', <I.IconStop />, stop, { disabled: !running })}
         <span className="tb-sep" aria-hidden />
         {!compact && (
@@ -340,13 +384,13 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
         <div className="run-settings">
           <NumberField
             label="Stop" unit="s" aria="Stop time in seconds" width={64}
-            value={net.settings.tf}
+            value={net.settings.tf} disabled={lockSettings}
             valid={(v) => v > 0 && v <= LIMITS.maxTf}
             onCommit={(v) => update({ ...net, settings: { ...net.settings, tf: v } })}
           />
           <NumberField
             label="Step" aria="Scope sample step in seconds" width={60} className="step-field"
-            value={net.settings.dt}
+            value={net.settings.dt} disabled={lockSettings}
             valid={(v) => v >= LIMITS.minDt}
             onCommit={(v) => update({ ...net, settings: { ...net.settings, dt: v } })}
           />
@@ -390,7 +434,7 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
             onZoom={setZoom}
           />
         </div>
-        <Inspector net={view} selection={selection} issues={issues} onGroup={groupable.length ? group : undefined} onBlockChange={changeBlock} onSettings={(p) => update({ ...net, ...p })} onDelete={deleteSelection} onClose={() => setSelection(null)} />
+        <Inspector net={view} selection={selection} issues={issues} enforceLocks={enforceLocks} canLock={canLock} lockSettings={lockSettings} onGroup={groupable.length ? group : undefined} onBlockChange={changeBlock} onSettings={(p) => update({ ...net, ...p })} onDelete={deleteSelection} onClose={() => setSelection(null)} />
       </div>
 
       {(!result || !result.ok || Object.keys(result.scopes).length === 0) && (
@@ -438,9 +482,9 @@ export function FulgurEditor({ initial, loadKey = 0, apiBase = '', examples = []
 }
 
 /** Mono, right-aligned number input that commits a valid draft on blur or Enter. */
-function NumberField({ label, unit, aria, width, value, valid, onCommit, className }: {
+function NumberField({ label, unit, aria, width, value, valid, onCommit, className, disabled }: {
   label: string; unit?: string; aria: string; width: number; value: number;
-  valid: (v: number) => boolean; onCommit: (v: number) => void; className?: string;
+  valid: (v: number) => boolean; onCommit: (v: number) => void; className?: string; disabled?: boolean;
 }) {
   const [draft, setDraft] = useState(String(value));
   useEffect(() => setDraft(String(value)), [value]);
@@ -456,6 +500,8 @@ function NumberField({ label, unit, aria, width, value, valid, onCommit, classNa
         value={draft}
         aria-label={aria}
         aria-invalid={!ok}
+        disabled={disabled}
+        title={disabled ? 'Set by the problem' : undefined}
         inputMode="decimal"
         onChange={(e) => setDraft(e.target.value)}
         onBlur={commit}

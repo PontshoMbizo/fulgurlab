@@ -61,7 +61,7 @@
   position: relative;
 }
 @media (prefers-color-scheme: dark) {
-  .fulgur {
+  .fulgur:not(.theme-light) {
     --paper: #1c2026;
     --chrome: #252a32;
     --panel: #20252c;
@@ -388,3 +388,11 @@
   .fulgur input:not([type='checkbox']), .fulgur select { font-size: 16px; }
 }
 @media (prefers-reduced-motion: reduce) { .fulgur * { transition: none !important; } }
+
+/* scope.io embedding: the problem's action button, and blocks the problem has locked */
+.fulgur .action-btn { background: var(--accent); border-color: var(--accent); color: #fff; }
+.fulgur .action-btn .lucide { fill: none; }
+.fulgur .block.is-locked .block-name { font-style: italic; }
+.fulgur .lock-badge { fill: var(--muted); color: var(--muted); }
+.fulgur .lock-row { display: flex; align-items: center; gap: 7px; }
+.fulgur input:disabled { opacity: 0.6; }

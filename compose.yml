@@ -11,6 +11,9 @@ services:
       SIM_TIMEOUT_MS: "20000"
       SIM_CONCURRENCY: "2"
       # CORS_ORIGINS: "https://scope.io"   # when the editor is served from another origin
+      TRUST_PROXY: "1"                     # nginx sets X-Forwarded-For; the rate limit keys on it
+      RATE_LIMIT_PER_MIN: "30"             # simulate calls per client per minute (0 = off)
+      FULGUR_GRADER_TOKEN: "${FULGUR_GRADER_TOKEN:-}"   # scope.io's grader skips the limit with this bearer token
     read_only: true
     tmpfs:
       - /tmp:size=512m

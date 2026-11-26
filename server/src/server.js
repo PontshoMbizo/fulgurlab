@@ -6,6 +6,8 @@
 //   GET  /*              static files from web/dist (if built), so one container serves everything
 //
 // Env: PORT (8080), HOST (0.0.0.0), CORS_ORIGINS (comma list, or *), STATIC_DIR,
+//      RATE_LIMIT_PER_MIN (30 simulate calls per client per minute; 0 = off), TRUST_PROXY (1 behind nginx),
+//      FULGUR_GRADER_TOKEN (bearer token that skips the rate limit, for scope.io's grading server),
 //      plus the runner's SCILAB_BIN / SIM_TIMEOUT_MS / SIM_CONCURRENCY.
 
 import { createServer } from 'node:http';
@@ -14,6 +16,7 @@ import { extname, join, normalize, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validateNetlist, NetlistError } from './netlist.js';
 import { simulate, SimulationError, config } from './runner.js';
+import { createLimiter, isGrader, clientKey } from './ratelimit.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 8080);
@@ -21,6 +24,9 @@ const HOST = process.env.HOST || '0.0.0.0';
 const STATIC_DIR = resolve(process.env.STATIC_DIR || join(here, '../../web/dist'));
 const ORIGINS = (process.env.CORS_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
 const MAX_BODY = 512 * 1024;
+const GRADER_TOKEN = process.env.FULGUR_GRADER_TOKEN || '';
+const TRUST_PROXY = process.env.TRUST_PROXY === '1';
+const limiter = createLimiter({ perMinute: Number(process.env.RATE_LIMIT_PER_MIN ?? 30) });
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2' };
 
@@ -31,7 +37,7 @@ function cors(req, res) {
     res.setHeader('Access-Control-Allow-Origin', ORIGINS.includes('*') ? '*' : origin);
     res.setHeader('Vary', 'Origin');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   }
 }
 
@@ -96,6 +102,10 @@ export const server = createServer(async (req, res) => {
     if (path === '/api/health' && req.method === 'GET') return send(res, 200, await health());
 
     if ((path === '/api/simulate' || path === '/api/validate') && req.method === 'POST') {
+      if (path === '/api/simulate' && !isGrader(req.headers.authorization, GRADER_TOKEN) && !limiter.allow(clientKey(req, TRUST_PROXY))) {
+        res.setHeader('Retry-After', '60');
+        return send(res, 429, { ok: false, error: 'Too many simulations from this address. Wait a minute and run again.' });
+      }
       const body = await readJson(req);
       let net;
       try { net = validateNetlist(body); }

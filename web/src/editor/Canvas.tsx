@@ -263,7 +263,7 @@ export function Canvas({ net, selection, errorBlocks, onChange, onSelect, onOpen
             const { inputs, outputs } = ports(b);
             const sel = selectedSet.has(b.id);
             return (
-              <g key={b.id} transform={`translate(${b.x},${b.y})`} className={`block ${sel ? 'is-selected' : ''} ${errorBlocks.has(b.id) ? 'has-error' : ''}`}>
+              <g key={b.id} transform={`translate(${b.x},${b.y})`} className={`block ${sel ? 'is-selected' : ''} ${errorBlocks.has(b.id) ? 'has-error' : ''} ${b.locked ? 'is-locked' : ''}`}>
                 <g onPointerDown={(e) => startMove(e, b)} onDoubleClick={() => onOpen?.(b.id)} className="block-body">
                   <BlockGlyph block={b} />
                 </g>
@@ -276,6 +276,13 @@ export function Canvas({ net, selection, errorBlocks, onChange, onSelect, onOpen
                   </g>
                 )}
                 <text x={w / 2} y={h + (sel ? 20 : 15)} textAnchor="middle" className="block-name">{b.name || b.id}</text>
+                {b.locked && (
+                  <g transform={`translate(${w - 9},-13)`} pointerEvents="none" className="lock-badge" aria-label="Locked">
+                    <title>Locked by the problem</title>
+                    <rect x={0} y={4} width={9} height={7} rx={1} />
+                    <path d="M2,4 V2.5 a2.5,2.5 0 0 1 5,0 V4" fill="none" stroke="currentColor" strokeWidth={1.2} />
+                  </g>
+                )}
                 {Array.from({ length: inputs }, (_, i) => {
                   const p = inPortPos(b, i);
                   const hot = hoverIn?.block === b.id && hoverIn.port === i;
